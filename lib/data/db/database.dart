@@ -1,0 +1,176 @@
+import 'package:drift/drift.dart';
+import 'package:drift_flutter/drift_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'schema.dart';
+
+part 'database.g.dart';
+
+@DriftDatabase(
+  tables: [
+    Diaries,
+    Moods,
+    MediaItems,
+    Notebooks,
+    Notes,
+    TodoItems,
+    ScheduleTemplates,
+    ScheduleInstances,
+    Drafts,
+    Settings,
+  ],
+)
+class AppDatabase extends _$AppDatabase {
+  AppDatabase() : super(_open());
+
+  /// 测试用（NativeDatabase.memory）
+  AppDatabase.forTesting(super.connection);
+
+  @override
+  int get schemaVersion => 1;
+
+  static QueryExecutor _open() {
+    return driftDatabase(name: 'trinity');
+  }
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+          await _createFts();
+          await _seedMoods();
+        },
+      );
+
+  Future<void> _createFts() async {
+    // external content 模式：正文存主表，FTS 只存索引，触发器同步
+    await customStatement(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS diaries_fts USING fts5("
+      "content, title, content='diaries', content_rowid='id', tokenize='unicode61')",
+    );
+    await customStatement(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5("
+      "content, title, tags, content='notes', content_rowid='id', tokenize='unicode61')",
+    );
+    for (final sql in _ftsTriggers) {
+      await customStatement(sql);
+    }
+  }
+
+  Future<void> _seedMoods() async {
+    const presets = <(String, double)>[
+      ('开心', 45), ('平静', 175), ('期待', 150), ('感动', 330),
+      ('疲惫', 220), ('难过', 210), ('焦虑', 265), ('生气', 8),
+    ];
+    for (var i = 0; i < presets.length; i++) {
+      await into(moods).insert(
+        MoodsCompanion.insert(
+          name: presets[i].$1,
+          hue: presets[i].$2,
+          isPreset: true,
+          sortOrder: i,
+        ),
+      );
+    }
+  }
+
+  static const _ftsTriggers = <String>[
+    'CREATE TRIGGER IF NOT EXISTS diaries_ai AFTER INSERT ON diaries BEGIN '
+        "INSERT INTO diaries_fts(rowid, content, title) VALUES (new.id, new.content, new.title); END",
+    'CREATE TRIGGER IF NOT EXISTS diaries_ad AFTER DELETE ON diaries BEGIN '
+        "INSERT INTO diaries_fts(diaries_fts, rowid, content, title) VALUES ('delete', old.id, old.content, old.title); END",
+    'CREATE TRIGGER IF NOT EXISTS diaries_au AFTER UPDATE ON diaries BEGIN '
+        "INSERT INTO diaries_fts(diaries_fts, rowid, content, title) VALUES ('delete', old.id, old.content, old.title); "
+        "INSERT INTO diaries_fts(rowid, content, title) VALUES (new.id, new.content, new.title); END",
+    'CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN '
+        "INSERT INTO notes_fts(rowid, content, title, tags) VALUES (new.id, new.content, new.title, new.tags); END",
+    'CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN '
+        "INSERT INTO notes_fts(notes_fts, rowid, content, title, tags) VALUES ('delete', old.id, old.content, old.title, old.tags); END",
+    'CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN '
+        "INSERT INTO notes_fts(notes_fts, rowid, content, title, tags) VALUES ('delete', old.id, old.content, old.title, old.tags); "
+        "INSERT INTO notes_fts(rowid, content, title, tags) VALUES (new.id, new.content, new.title, new.tags); END",
+  ];
+
+  /// WAL 模式下导出/备份/复制 SQLite 文件前必须先 checkpoint（NotallyX 教训），
+  /// 否则备份可能是旧的。
+  Future<void> checkpoint() async {
+    await customStatement('PRAGMA wal_checkpoint(FULL)');
+  }
+
+  /// FTS5 全文搜索日记。unicode61 对中文整串分词，>=3 字走 MATCH，
+  /// 短词回退 LIKE（个人数据量级全表扫可接受）。
+  Future<List<DiariesRow>> searchDiaries(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    if (q.length >= 3) {
+      final rows = await customSelect(
+        'SELECT d.* FROM diaries d JOIN diaries_fts f ON d.id = f.rowid '
+        'WHERE diaries_fts MATCH ? ORDER BY d.date_day DESC',
+        variables: [Variable(_ftsQuery(q))],
+        readsFrom: {diaries},
+      ).map(_rowToDiary).get();
+      if (rows.isNotEmpty) return rows;
+    }
+    final like = '%$q%';
+    final rows = await customSelect(
+      'SELECT * FROM diaries WHERE content LIKE ? OR title LIKE ? '
+      'ORDER BY date_day DESC',
+      variables: [Variable(like), Variable(like)],
+      readsFrom: {diaries},
+    ).map(_rowToDiary).get();
+    return rows;
+  }
+
+  Future<List<NoteRow>> searchNotes(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    if (q.length >= 3) {
+      final rows = await customSelect(
+        'SELECT n.* FROM notes n JOIN notes_fts f ON n.id = f.rowid '
+        'WHERE notes_fts MATCH ? ORDER BY n.updated_at DESC',
+        variables: [Variable(_ftsQuery(q))],
+        readsFrom: {notes},
+      ).map(_rowToNote).get();
+      if (rows.isNotEmpty) return rows;
+    }
+    final like = '%$q%';
+    final rows = await customSelect(
+      'SELECT * FROM notes WHERE content LIKE ? OR title LIKE ? OR tags LIKE ? '
+      'ORDER BY updated_at DESC',
+      variables: [Variable(like), Variable(like), Variable(like)],
+      readsFrom: {notes},
+    ).map(_rowToNote).get();
+    return rows;
+  }
+
+  /// 查询词转 FTS5 安全前缀（引号包裹防注入/语法错）
+  static String _ftsQuery(String q) => '"${q.replaceAll('"', '""')}"';
+
+  /// customSelect 返回的 key 是 SQL 列名（snake_case）
+  DiariesRow _rowToDiary(QueryRow r) => DiariesRow(
+        id: r.read<int>('id'),
+        dateDay: r.read<int>('date_day'),
+        title: r.read<String>('title'),
+        content: r.read<String>('content'),
+        moodId: r.readNullable<int>('mood_id'),
+        createdAt: r.read<DateTime>('created_at'),
+        updatedAt: r.read<DateTime>('updated_at'),
+      );
+
+  NoteRow _rowToNote(QueryRow r) => NoteRow(
+        id: r.read<int>('id'),
+        notebookId: r.read<int>('notebook_id'),
+        title: r.read<String>('title'),
+        content: r.read<String>('content'),
+        tags: r.read<String>('tags'),
+        pinned: r.read<bool>('pinned'),
+        createdAt: r.read<DateTime>('created_at'),
+        updatedAt: r.read<DateTime>('updated_at'),
+      );
+
+  /// 导出/备份用的数据库文件路径（App 私有文档目录）
+  Future<String> databaseFilePath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return '${dir.path}/trinity.sqlite';
+  }
+}
