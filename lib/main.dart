@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 
 import 'app/router.dart';
 import 'design/theme.dart';
@@ -20,7 +22,57 @@ Future<void> main() async {
       systemNavigationBarColor: Colors.transparent,
     ),
   );
+  // ★ intl 中文日期符号必须显式初始化，否则 DateFormat(.., 'zh_CN') 抛
+  //   LocaleDataException（首页白屏根因）
+  await initializeDateFormatting('zh_CN');
+  Intl.defaultLocale = 'zh_CN';
+
+  // release 下页面崩溃默认渲染空白；改为显示错误摘要，方便定位
+  ErrorWidget.builder = (details) => _CalmErrorPage(details: details);
+
   runApp(const ProviderScope(child: TrinityApp()));
+}
+
+/// 兜底错误页（骨架灰阶，显示异常摘要；不引用任何可能再崩的业务代码）
+class _CalmErrorPage extends StatelessWidget {
+  const _CalmErrorPage({required this.details});
+
+  final FlutterErrorDetails details;
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = '${details.exception}';
+    final clipped = msg.length > 400 ? '${msg.substring(0, 400)}…' : msg;
+    return Material(
+      color: lightPalette.canvas,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.page),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '页面出错了',
+                    style: AppType.title.copyWith(color: lightPalette.ink),
+                  ),
+                  const SizedBox(height: AppSpacing.s8),
+                  Text(
+                    clipped,
+                    style: AppType.caption.copyWith(
+                      color: lightPalette.inkSoft,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class TrinityApp extends ConsumerStatefulWidget {
@@ -38,15 +90,33 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
   }
 
   /// 启动序列：
-  /// 1. 通知初始化  2. 锁屏 hash 加载  3. 日程 regenerate（滚动窗口）
+  /// 1. 锁屏 hash 加载（决定首帧是否重定向锁屏）
+  /// 2. 通知初始化  3. 日程 regenerate（滚动窗口）
   /// 4. 提醒全量重建（uhabits #1509 兜底，不阻塞首帧）
+  /// 每步独立容错：一步失败不影响后续
   Future<void> _bootstrap() async {
-    await NotificationService.instance.init();
-    final settings = ref.read(settingsRepoProvider);
-    final pinHash = await settings.get('lock_pin_hash');
-    await ref.read(lockGateProvider).load(pinHash);
-    final scheduler = ref.read(scheduleRepoProvider);
-    await scheduler.regenerate();
+    final router = ref.read(routerProvider);
+    final gate = ref.read(lockGateProvider);
+    gate.onLoaded = () => router.refresh();
+
+    String? pinHash;
+    try {
+      pinHash = await ref.read(settingsRepoProvider).get('lock_pin_hash');
+    } catch (e) {
+      // 读不到就当没设锁，不阻塞启动
+    }
+    await gate.load(pinHash);
+
+    try {
+      await NotificationService.instance.init();
+    } catch (e) {
+      // 通知不可用：日程页会显示警告条，不阻塞启动
+    }
+    try {
+      await ref.read(scheduleRepoProvider).regenerate();
+    } catch (e) {
+      // 生成失败：下次打开日程页重试
+    }
     unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
   }
 

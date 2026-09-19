@@ -26,12 +26,16 @@ final lockGateProvider = Provider<LockGate>((ref) => LockGate());
 
 class LockGate {
   bool unlocked = false;
-  bool get required => _pinHash != null;
+  bool loaded = false; // bootstrap 完成前不重定向（首帧放行）
+  bool get required => _pinHash != null && _pinHash!.isNotEmpty;
   String? _pinHash;
+  void Function()? onLoaded;
 
   Future<void> load(String? hash) async {
-    _pinHash = hash;
-    if (hash == null) unlocked = true;
+    _pinHash = (hash == null || hash.isEmpty) ? null : hash;
+    if (_pinHash == null) unlocked = true;
+    loaded = true;
+    onLoaded?.call();
   }
 }
 
@@ -41,6 +45,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootKey,
     initialLocation: '/home',
     redirect: (context, state) {
+      // 锁屏 hash 尚未加载完：放行，加载完由 router.refresh() 触发重定向
+      if (!gate.loaded) return null;
       final locked = gate.required && !gate.unlocked;
       final atLock = state.matchedLocation == '/lock';
       if (locked && !atLock) return '/lock';
