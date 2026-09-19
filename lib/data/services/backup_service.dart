@@ -16,10 +16,13 @@ class BackupServiceImpl {
     await _db.checkpoint();
     final data = <String, dynamic>{};
 
-    data['schemaVersion'] = 1;
+    data['schemaVersion'] = _db.schemaVersion;
     data['exportedAt'] = DateTime.now().toIso8601String();
     data['diaries'] =
         (await _db.select(_db.diaries).get()).map((r) => r.toJson()).toList();
+    data['diaryNotebooks'] = (await _db.select(_db.diaryNotebooks).get())
+        .map((r) => r.toJson())
+        .toList();
     data['moods'] =
         (await _db.select(_db.moods).get()).map((r) => r.toJson()).toList();
     data['mediaItems'] = (await _db.select(_db.mediaItems).get())
@@ -39,6 +42,10 @@ class BackupServiceImpl {
     data['scheduleInstances'] = (await _db.select(_db.scheduleInstances).get())
         .map((r) => r.toJson())
         .toList();
+    data['drafts'] =
+        (await _db.select(_db.drafts).get()).map((r) => r.toJson()).toList();
+    data['settings'] =
+        (await _db.select(_db.settings).get()).map((r) => r.toJson()).toList();
 
     final docs = await getApplicationDocumentsDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;

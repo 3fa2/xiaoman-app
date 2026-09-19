@@ -153,6 +153,9 @@ class AutosaveController {
         if (_entityId == null) {
           _entityId = id;
           onSaved?.call(id);
+          // 首存成功：清掉"新建中"的 -1 草稿，
+          // 否则每次新建都弹上一篇已保存日记的旧草稿（恢复还会造成内容重复）
+          await _repo.clearDraft(ownerType: draftOwnerType, ownerId: -1);
         }
         _baselineTitle = title;
         _baselineContent = content;

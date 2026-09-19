@@ -280,6 +280,15 @@ class ScheduleRepositoryImpl implements ScheduleRepository {
     );
 
     for (final n in missing) {
+      // 提醒提前量随模板落地（P0-2：模板路径的提醒曾经不生效）
+      DateTime? remindAt;
+      if (n.remindMinutesBefore > 0) {
+        final day = DateDay.toDateTime(n.dateDay);
+        final start = DateTime(day.year, day.month, day.day);
+        remindAt = start.add(
+          Duration(minutes: n.startMinutes - n.remindMinutesBefore),
+        );
+      }
       await _db.into(_db.scheduleInstances).insert(
             ScheduleInstancesCompanion.insert(
               templateId: Value(n.templateId),
@@ -289,6 +298,7 @@ class ScheduleRepositoryImpl implements ScheduleRepository {
               title: n.title,
               description: Value(n.description),
               colorIndex: Value(n.colorIndex),
+              remindAt: Value(remindAt),
               createdAt: current,
               updatedAt: current,
             ),

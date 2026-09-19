@@ -53,8 +53,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       _error = false;
     });
     if (_pin.length != 6) return;
+    // await 前快照：等待期间用户可能按删除键改短 _pin，导致误判
+    final pin = _pin;
     final pinHash = await ref.read(settingsRepoProvider).get('lock_pin_hash');
-    final input = sha256Hex(_pin);
+    // await 期间可能已被生物识别解锁并跳转（widget 已 dispose）
+    if (!mounted) return;
+    final input = sha256Hex(pin);
     if (pinHash == input) {
       _unlock();
     } else {

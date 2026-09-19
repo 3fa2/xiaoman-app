@@ -64,7 +64,17 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
         _description.text = inst.description;
         _colorIndex = inst.colorIndex;
         _detached = inst.detached;
-        _remindBefore = 0;
+        // 从 remindAt 反推提前量回填：否则只改标题点保存也会把提醒清掉
+        final remindAt = inst.remindAt;
+        if (remindAt != null) {
+          final day = DateDay.toDateTime(inst.dateDay);
+          final blockStart = DateTime(day.year, day.month, day.day)
+              .add(Duration(minutes: inst.startMinutes));
+          final before = blockStart.difference(remindAt).inMinutes;
+          _remindBefore = before > 0 ? before : 0;
+        } else {
+          _remindBefore = 0;
+        }
       }
     } else if (widget.templateId != null) {
       final t = await repo.getTemplate(widget.templateId!);

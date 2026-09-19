@@ -34,7 +34,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notif = await Permission.notification.isGranted;
     if (mounted) {
       setState(() {
-        _hasPin = hasPin != null;
+        // 空字符串 = 已关闭锁（set('lock_pin_hash', '')），不算开启
+        _hasPin = hasPin != null && hasPin.isNotEmpty;
         _exactOk = exact;
         _notifGranted = notif;
       });

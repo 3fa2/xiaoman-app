@@ -65,6 +65,13 @@ class NotificationService {
     final warnings = <String>[];
     if (!_inited) await init();
 
+    // 先清空插件层已排定的全部通知：删除/跳过的日程到点不再弹（幽灵通知）
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {
+      // 初次安装无已排通知时个别设备抛异常，忽略
+    }
+
     final now = DateTime.now();
     final from = DateTime(now.year, now.month, now.day);
     final to = from.add(const Duration(days: 15));

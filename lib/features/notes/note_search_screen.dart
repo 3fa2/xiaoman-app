@@ -52,7 +52,8 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
   }
 
   Widget _body() {
-    if (_query.isEmpty) {
+    // trim 后判断：纯空格输入不当"有关键词"，否则 _results 恒 null 卡骨架屏
+    if (_query.trim().isEmpty) {
       return const EmptyState(
         icon: PhosphorIconsRegular.magnifyingGlass,
         title: '输入关键词搜索',

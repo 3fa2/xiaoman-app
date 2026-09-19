@@ -171,6 +171,22 @@ void main() {
       final r = await repo.searchNotes('动量因子');
       expect(r.length, 1);
     });
+
+    test('自动保存通道（EditorRepository.save）不清空 tags/pinned', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'C', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      final id = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'a', content: 'b',
+        tags: ['重要'], pinned: true,
+      );
+      // 模拟打字触发的自动保存（只传标题正文）
+      await repo.save(id: id, title: 'a2', content: 'b2', extra: nbs.first.id);
+      final note = await repo.getNoteById(id);
+      expect(note!.title, 'a2');
+      expect(note.tags, ['重要']);
+      expect(note.pinned, isTrue);
+    });
   });
 
   group('ScheduleRepository', () {
@@ -213,6 +229,30 @@ void main() {
       final round2 =
           await repo.watchRange(today, DateDay.addDays(today, 2)).first;
       expect(round2.length, 3);
+    });
+
+    test('regenerate 生成的模板实例带 remindAt（模板提醒生效）', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      await repo.saveTemplate(
+        ScheduleTemplate(
+          id: 0, title: '带提醒的重复', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 540,
+          durationMinutes: 30, remindMinutesBefore: 10, enabled: true,
+          createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1),
+        ),
+        isNew: true,
+      );
+      final today = DateDay.of(DateTime.now());
+      final instances =
+          await repo.watchRange(today, DateDay.addDays(today, 1)).first;
+      expect(instances.length, 2);
+      expect(instances.first.remindAt, isNotNull);
+      // remindAt = 当天 00:00 + (540 - 10) 分钟 = 08:50
+      final day = DateDay.toDateTime(instances.first.dateDay);
+      expect(
+        instances.first.remindAt,
+        DateTime(day.year, day.month, day.day, 8, 50),
+      );
     });
 
     test('skipTemplateOccurrence 写 exdates 并删该次实例', () async {

@@ -172,7 +172,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
     final noteId = widget.noteId;
 
     return PopScope(
-      canPop: _controller.status != SaveStatus.saving,
+      // dirty 也不放行：canPop=true 时系统直接 pop（didPop=true），
+      // _onPopInvoked 的早退分支让 flush 永不执行 → 2 秒去抖窗口内的编辑丢失。
+      canPop: _controller.status != SaveStatus.saving &&
+          _controller.status != SaveStatus.dirty,
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(

@@ -3,13 +3,36 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '8c2ae367-afc9-443c-86c0-c8d92dca9bea'
-  PropagateID: '8c2ae367-afc9-443c-86c0-c8d92dca9bea'
-  ReservedCode1: 'db3f8530-1328-406f-bc0f-89942d629940'
-  ReservedCode2: 'db3f8530-1328-406f-bc0f-89942d629940'
+  ProduceID: '5b52e378-9c5e-465d-9b00-c91d9d42dd97'
+  PropagateID: '5b52e378-9c5e-465d-9b00-c91d9d42dd97'
+  ReservedCode1: '9be6a47a-99cf-400a-ad32-1fb443119e02'
+  ReservedCode2: '9be6a47a-99cf-400a-ad32-1fb443119e02'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.3.3+19（2026-09-19）· 第二轮全库巡检（双审查通道），修复 13 处
+
+两个并行深度审查（页面层 + 数据服务层）交叉核实，修复确认的问题：
+
+### 高危（丢数据 / 核心功能失效）
+- **笔记标签和置顶被自动保存冲掉**：EditorRepository.save（打字触发的自动保存）update 路径全量写 tags/pinned → 空标签+取消置顶覆盖原值 → update 只写标题/正文/归本，tags/pinned 不再触碰（新增回归测试）
+- **重复模板的提醒永远不响**：regenerate() 插入实例漏写 remindAt（P0-2 对模板路径完全失效）→ 按"午夜+开始-提前量"公式补写（新增回归测试）
+- **打完字 2 秒内退出丢编辑**：PopScope 只拦"saving"，dirty 直接放行导致 flush 永不执行 → dirty 也拦截，flush 后手动 pop（日记+备忘两个编辑器）
+- **已删除日程到点仍弹通知（幽灵闹钟）**：提醒两层都只增不删 → Dart 侧 syncAll 先 cancelAll 再排；原生 setAll 先 cancel 旧持久列表的全部闹钟
+
+### 中危（功能错误）
+- 编辑日程只改标题也会清掉提醒（_remindBefore 回填 0）→ 从 remindAt 反推提前量回填
+- 新建日记/笔记首存后 -1 草稿不清理 → 每次新建都弹上一篇旧草稿（恢复还会内容重复）→ 首存成功即清
+- 草稿恢复正则在转义引号处截断（正文含引号恢复不全）→ 改 jsonDecode（旧正则兜底）
+- 备忘编辑已有笔记时 tags/pinned 变更从不上库（_flushNote 拿不到 id）→ id 取 widget.noteId ?? _savedId
+- 锁屏 PIN 验证：await 后无 mounted（生物识别先解锁时崩）+ 输入竞态（等 hash 时删键误判）→ pin 快照 + mounted 检查
+- 设置页"关闭密码锁"后仍显示"已开启"（空字符串误判）→ isNotEmpty 判断
+- 备忘搜索输入纯空格永远卡骨架屏 → trim 判断
+- 实况照片单文件拆解写到源文件旁（无扩展名源文件会被视频字节覆写、相册目录多半不可写）→ 改写系统临时目录
+- 备份缺 diary_notebooks/drafts/settings 且 schemaVersion 硬编码 → 补全三表 + 读实际版本
+
+测试 51/51 全过（新增 2 个防回归）；analyze 0 error/0 warning；APK 验签 CN=Trinity
 
 ## v4.3.2+18（2026-09-19）· 代码巡检查出 4 个 bug
 

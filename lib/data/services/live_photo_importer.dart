@@ -145,11 +145,12 @@ class LivePhotoImporter {
     int videoOffset,
     int length,
   ) async {
+    // 写到系统临时目录（唯一文件名）：绝不写在源文件旁边——
+    // 无扩展名的源文件会让 replaceAll 退化为同路径，openWrite 直接截断用户原图；
+    // 相册目录在分区存储下也多半不可写。systemTemp 在 Android 即应用缓存目录，OS 自行回收。
     final tmp = File(
-      coverPath.replaceAll(
-        RegExp(r'\.[^.]+$'),
-        '_live.mp4',
-      ),
+      '${Directory.systemTemp.path}/live_carve_'
+      '${DateTime.now().microsecondsSinceEpoch}.mp4',
     );
     final sink = tmp.openWrite();
     await raf.setPosition(videoOffset);

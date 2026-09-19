@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -89,13 +90,16 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       // 否则"先加标签再打字"的场景标签会丢。
       onSaved: (id) async {
         _savedId = id;
-        final repo = ref.read(diaryRepoProvider);
-        if (_tags.isNotEmpty) {
-          await repo.setTags(diaryId: id, tags: _tags);
-        }
-        if (_notebookId != null && _notebookId! > 0) {
-          await repo.setNotebook(diaryId: id, notebookId: _notebookId);
-        }
+        // 补写暂存 tags/归本：失败不抢断主流程（下次保存幂等重试）
+        try {
+          final repo = ref.read(diaryRepoProvider);
+          if (_tags.isNotEmpty) {
+            await repo.setTags(diaryId: id, tags: _tags);
+          }
+          if (_notebookId != null && _notebookId! > 0) {
+            await repo.setNotebook(diaryId: id, notebookId: _notebookId);
+          }
+        } catch (_) {}
       },
     );
     _controller.addListener(_onSaveStatus);
@@ -188,14 +192,28 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   }
 
   void _restoreDraft(String payload) {
-    final title = RegExp(r'"title":"(.*?)"').firstMatch(payload)?.group(1);
-    final content =
-        RegExp(r'"content":"(.*?)"').firstMatch(payload)?.group(1);
-    final extra =
-        RegExp(r'"extra":(null|\d+)').firstMatch(payload)?.group(1);
-    _title.text = (title ?? '').replaceAll(r'\n', '\n');
-    _content.text = (content ?? '').replaceAll(r'\n', '\n');
-    _moodId = extra == null || extra == 'null' ? null : int.tryParse(extra);
+    String? title;
+    String? content;
+    int? extra;
+    try {
+      // 首选 jsonDecode：正则会在转义引号（如正文含 \\"）处截断
+      final map = jsonDecode(payload) as Map<String, dynamic>;
+      title = map['title'] as String?;
+      content = map['content'] as String?;
+      extra = map['extra'] as int?;
+    } catch (_) {
+      // 兼容旧正则（极旧版本草稿）
+      title = RegExp(r'"title":"(.*?)"').firstMatch(payload)?.group(1);
+      content =
+          RegExp(r'"content":"(.*?)"').firstMatch(payload)?.group(1);
+      final e = RegExp(r'"extra":(null|\d+)').firstMatch(payload)?.group(1);
+      extra = e == null || e == 'null' ? null : int.tryParse(e);
+      title = title?.replaceAll(r'\n', '\n');
+      content = content?.replaceAll(r'\n', '\n');
+    }
+    _title.text = title ?? '';
+    _content.text = content ?? '';
+    _moodId = extra;
     _controller.loadBaseline(
       entityId: null, title: _title.text, content: _content.text, extra: null,
     );
@@ -282,7 +300,6 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     );
     if (mounted) Navigator.of(context).pop();
   }
-
   // ---- 媒体导入 ----
   Future<void> _pickMedia() async {
     final ownerId = await _ensureEntityId();
@@ -436,7 +453,11 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
         : ref.watch(mediaRepoProvider).watchFor(MediaOwner.diary, _entityId!);
 
     return PopScope(
-      canPop: _controller.status != SaveStatus.saving,
+      // dirty 也不放行：canPop=true 时系统直接 pop（didPop=true），
+      // _onPopInvoked 的早退分支让 flush 永不执行 → 2 秒去抖窗口内的编辑丢失。
+      // saved/idle 直接走；dirty/saving 拦下来 flush 后手动 pop。
+      canPop: _controller.status != SaveStatus.saving &&
+          _controller.status != SaveStatus.dirty,
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(
