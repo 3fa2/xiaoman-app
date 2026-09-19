@@ -24,9 +24,12 @@ import '../shared/widgets.dart';
 /// ③ dispose 只做清理，不发起新写入
 /// ④ UI 只反映真实状态：saved/saving/dirty/error，绝不撒谎
 class DiaryEditorScreen extends ConsumerStatefulWidget {
-  const DiaryEditorScreen({super.key, required this.diaryId});
+  const DiaryEditorScreen({super.key, required this.diaryId, this.notebookId});
 
   final int? diaryId;
+
+  /// 从某本日记本进入新建时默认归本（null = 不归本）
+  final int? notebookId;
 
   @override
   ConsumerState<DiaryEditorScreen> createState() => _DiaryEditorScreenState();
@@ -41,6 +44,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   bool _listening = false;
   bool _ready = false;
   int? _moodId;
+  int? _notebookId; // 归属日记本
   List<String> _tags = const []; // 实体未建时暂存，建后立即落库
   MediaOwner get _ownerType => MediaOwner.diary;
 
@@ -60,6 +64,9 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     );
     if (_tags.isNotEmpty) {
       await repo.setTags(diaryId: id, tags: _tags);
+    }
+    if (_notebookId != null && _notebookId! > 0) {
+      await repo.setNotebook(diaryId: id, notebookId: _notebookId);
     }
     _controller.loadBaseline(
       entityId: id,
@@ -97,6 +104,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       _content.text = diary.content;
       _moodId = diary.moodId;
       _tags = diary.tags;
+      _notebookId = diary.notebookId;
       _controller.loadBaseline(
         entityId: diary.id,
         title: diary.title,
@@ -104,7 +112,8 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
         extra: diary.moodId,
       );
     } else {
-      // 草稿兜底（MoeMemos 模式）：新建时有残留草稿则提示恢复
+      _notebookId = widget.notebookId;
+      // 草稿兑底（MoeMemos 模式）：新建时有残留草稿则提示恢复
       final draft = await repo.findDraft(ownerType: _ownerType, ownerId: -1);
       _controller.loadBaseline(
         entityId: null, title: '', content: '', extra: null,
@@ -180,6 +189,17 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       entityId: null, title: _title.text, content: _content.text, extra: null,
     );
     setState(() {});
+  }
+
+  // ---- 归入日记本（实体已存在则立即落库；否则暂存，首存后补写）----
+  Future<void> _pickNotebook(int? notebookId) async {
+    setState(() => _notebookId = notebookId);
+    final id = _entityId;
+    if (id != null) {
+      await ref
+          .read(diaryRepoProvider)
+          .setNotebook(diaryId: id, notebookId: notebookId);
+    }
   }
 
   // ---- 标签（实体已存在则立即落库；否则暂存，首存后补写）----
@@ -428,7 +448,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                           controller: _title,
                           style: AppType.title.copyWith(color: p.onSurface),
                           decoration: const InputDecoration(
-                            labelText: '标题',
+                            labelText: '标题（可不填，留空显示日期）',
                             filled: false,
                             fillColor: Colors.transparent,
                             border: InputBorder.none,
@@ -436,6 +456,10 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                           onChanged: (v) => _controller.onChanged(
                             title: v, content: _content.text, extra: _moodId,
                           ),
+                        ),
+                        _NotebookRow(
+                          notebookId: _notebookId,
+                          onPick: _pickNotebook,
                         ),
                         _MoodRow(
                           moods: moods,
@@ -497,6 +521,127 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// 归入日记本选择行（类似 _MoodRow）
+class _NotebookRow extends ConsumerWidget {
+  const _NotebookRow({required this.notebookId, required this.onPick});
+
+  final int? notebookId;
+  final ValueChanged<int?> onPick;
+
+  Future<void> _sheet(BuildContext context, WidgetRef ref) async {
+    final p = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) => StreamBuilder<List<(DiaryNotebook, int)>>(
+        stream: ref.read(diaryRepoProvider).watchDiaryNotebooks(),
+        builder: (context, snap) {
+          final list = snap.data ?? const <(DiaryNotebook, int)>[];
+          final dark = Theme.of(ctx).brightness == Brightness.dark;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '归入日记本',
+                  style: AppType.headline.copyWith(color: p.onSurface),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.s8),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.stack,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: const Text('不归本'),
+                  selected: notebookId == null,
+                  onTap: () {
+                    onPick(null);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                for (final (nb, _) in list)
+                  ListTile(
+                    leading: MoodDot(
+                      color: NotebookPalette.resolve(nb.colorIndex, dark: dark),
+                      size: 10,
+                    ),
+                    title: Text(nb.name),
+                    selected: notebookId == nb.id,
+                    onTap: () {
+                      onPick(nb.id);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<(DiaryNotebook, int)>>(
+      stream: ref.watch(diaryRepoProvider).watchDiaryNotebooks(),
+      builder: (context, snap) {
+        final list = snap.data ?? const <(DiaryNotebook, int)>[];
+        final current = list
+            .where((e) => e.$1.id == notebookId)
+            .map((e) => e.$1)
+            .firstOrNull;
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        return InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.rMd),
+          onTap: () => _sheet(context, ref),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
+            child: Row(
+              children: [
+                PhosphorIcon(
+                  PhosphorIconsRegular.books,
+                  size: 20,
+                  color: p.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Text(
+                  current == null ? '归入日记本' : current.name,
+                  style: AppType.label.copyWith(
+                    color: current == null
+                        ? p.onSurfaceVariant
+                        : (dark ? p.onSurface : p.primary),
+                  ),
+                ),
+                if (current != null) ...[
+                  const SizedBox(width: AppSpacing.s8),
+                  MoodDot(
+                    color: NotebookPalette.resolve(
+                      current.colorIndex,
+                      dark: dark,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                PhosphorIcon(
+                  PhosphorIconsRegular.caretDown,
+                  size: 16,
+                  color: p.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

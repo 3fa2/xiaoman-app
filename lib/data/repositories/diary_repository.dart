@@ -77,6 +77,16 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
   }
 
   @override
+  Future<void> setNotebook({required int diaryId, required int? notebookId}) async {
+    await (_db.update(_db.diaries)..where((d) => d.id.equals(diaryId))).write(
+      DiariesCompanion(
+        notebookId: Value(notebookId),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  @override
   Future<void> delete(int id) =>
       (_db.delete(_db.diaries)..where((d) => d.id.equals(id))).go();
 
@@ -88,6 +98,7 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
         tags: row.tags.isEmpty
             ? const []
             : row.tags.split(',').where((t) => t.isNotEmpty).toList(),
+        notebookId: row.notebookId,
         moodId: row.moodId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -116,6 +127,110 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
       ..where((d) => d.dateDay.isBetweenValues(from, to))
       ..orderBy([(d) => OrderingTerm.desc(d.dateDay)]);
     return q.watch().map((rows) => rows.map(_map).toList());
+  }
+
+  @override
+  Stream<List<Diary>> watchByMonthIn(int yearMonth, int? notebookId) {
+    final from = yearMonth * 100;
+    final to = from + 99;
+    final q = _db.select(_db.diaries)
+      ..where((d) => d.dateDay.isBetweenValues(from, to));
+    if (notebookId == null) {
+      // 全部
+    } else if (notebookId == -1) {
+      q.where((d) => d.notebookId.isNull());
+    } else {
+      q.where((d) => d.notebookId.equals(notebookId));
+    }
+    q.orderBy([(d) => OrderingTerm.desc(d.dateDay)]);
+    return q.watch().map((rows) => rows.map(_map).toList());
+  }
+
+  @override
+  Stream<List<Diary>> watchByDateIn(int dateDay, int? notebookId) {
+    final q = _db.select(_db.diaries)
+      ..where((d) => d.dateDay.equals(dateDay));
+    if (notebookId == null) {
+      // 全部
+    } else if (notebookId == -1) {
+      q.where((d) => d.notebookId.isNull());
+    } else {
+      q.where((d) => d.notebookId.equals(notebookId));
+    }
+    q.orderBy([(d) => OrderingTerm.desc(d.createdAt)]);
+    return q.watch().map((rows) => rows.map(_map).toList());
+  }
+
+  @override
+  Stream<List<(DiaryNotebook, int)>> watchDiaryNotebooks() {
+    final countExp = _db.diaries.id.count();
+    final q = _db.select(_db.diaryNotebooks).join(
+          [
+            leftOuterJoin(
+              _db.diaries,
+              _db.diaries.notebookId.equalsExp(_db.diaryNotebooks.id),
+            ),
+          ],
+        )
+      ..addColumns([countExp])
+      ..groupBy([_db.diaryNotebooks.id])
+      ..orderBy([OrderingTerm.asc(_db.diaryNotebooks.sortOrder)]);
+    return q.watch().map(
+          (rows) => rows
+              .map(
+                (r) => (
+                  DiaryNotebook(
+                    id: r.readTable(_db.diaryNotebooks).id,
+                    name: r.readTable(_db.diaryNotebooks).name,
+                    colorIndex: r.readTable(_db.diaryNotebooks).colorIndex,
+                    sortOrder: r.readTable(_db.diaryNotebooks).sortOrder,
+                  ),
+                  r.read(countExp) ?? 0,
+                ),
+              )
+              .toList(),
+        );
+  }
+
+  @override
+  Future<int> saveDiaryNotebook({
+    required int? id,
+    required String name,
+    required int colorIndex,
+  }) async {
+    if (id == null) {
+      final maxSort = await (_db.select(_db.diaryNotebooks)
+            ..orderBy([(n) => OrderingTerm.desc(n.sortOrder)])
+            ..limit(1))
+          .getSingleOrNull();
+      return _db.into(_db.diaryNotebooks).insert(
+            DiaryNotebooksCompanion.insert(
+              name: name,
+              colorIndex: Value(colorIndex),
+              sortOrder: (maxSort?.sortOrder ?? -1) + 1,
+              createdAt: DateTime.now(),
+            ),
+          );
+    }
+    await (_db.update(_db.diaryNotebooks)..where((n) => n.id.equals(id)))
+        .write(
+      DiaryNotebooksCompanion(
+        name: Value(name),
+        colorIndex: Value(colorIndex),
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> deleteDiaryNotebook(int id) async {
+    // 日记保留，归到未归本
+    await (_db.update(_db.diaries)
+          ..where((d) => d.notebookId.equals(id)))
+        .write(
+      DiariesCompanion(notebookId: Value(null)),
+    );
+    await (_db.delete(_db.diaryNotebooks)..where((n) => n.id.equals(id))).go();
   }
 
   @override

@@ -36,14 +36,31 @@ abstract interface class DiaryRepository implements EditorRepository {
   Stream<List<Diary>> watchByDate(int dateDay);
   Stream<List<Diary>> watchAll();
   Stream<List<Diary>> watchByMonth(int yearMonth); // yyyymm
+
+  /// 按日记本过滤（notebookId null = 全部，-1 = 未归本）
+  Stream<List<Diary>> watchByMonthIn(
+    int yearMonth,
+    int? notebookId,
+  );
+  Stream<List<Diary>> watchByDateIn(int dateDay, int? notebookId);
   Future<Diary?> getById(int id);
   Future<void> setMood({required int diaryId, required int? moodId});
   Future<void> setTags({required int diaryId, required List<String> tags});
+  Future<void> setNotebook({required int diaryId, required int? notebookId});
   Future<void> delete(int id);
   Future<List<Diary>> search(String query); // FTS5，<3 字回退 LIKE
   Stream<List<Mood>> watchMoods();
   Future<int> addMood(String name, double hue);
   Future<List<(Diary, Mood?)>> watchWithMoodRange(int fromDay, int toDay);
+
+  // ---- 日记本（v4.3 自建分类）----
+  Stream<List<(DiaryNotebook, int)>> watchDiaryNotebooks(); // 含篇数
+  Future<int> saveDiaryNotebook({
+    required int? id,
+    required String name,
+    required int colorIndex,
+  });
+  Future<void> deleteDiaryNotebook(int id); // 里面的日记保留（未归本）
 }
 
 abstract interface class NoteRepository implements EditorRepository {

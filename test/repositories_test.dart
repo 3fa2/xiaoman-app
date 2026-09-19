@@ -80,6 +80,42 @@ void main() {
       expect(r.length, 1);
       expect(r.first.title, '旅行');
     });
+
+    test('日记本：建本 + 归属过滤 + 删除本后日记变未归本', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final nbId = await repo.saveDiaryNotebook(
+        id: null, name: '碎碎念', colorIndex: 1,
+      );
+      // 两篇日记：一篇归本、一篇不归
+      final inBook = await repo.save(
+        id: null, title: '本内', content: 'a', extra: null,
+      );
+      final outside = await repo.save(
+        id: null, title: '本外', content: 'b', extra: null,
+      );
+      await repo.setNotebook(diaryId: inBook, notebookId: nbId);
+      // 篇数统计
+      final notebooks = await repo.watchDiaryNotebooks().first;
+      expect(notebooks.single.$1.name, '碎碎念');
+      expect(notebooks.single.$2, 1);
+      // 按本过滤
+      final inList = await repo
+          .watchByMonthIn(202609, nbId)
+          .first;
+      expect(inList.map((d) => d.title), ['本内']);
+      // 未归本过滤（-1）
+      final outList = await repo.watchByMonthIn(202609, -1).first;
+      expect(outList.map((d) => d.title), ['本外']);
+      // 全部视图两篇都有
+      expect((await repo.watchByMonthIn(202609, null).first).length, 2);
+      // 删除本：日记保留变未归本
+      await repo.deleteDiaryNotebook(nbId);
+      expect((await repo.watchDiaryNotebooks().first).isEmpty, isTrue);
+      final d = await repo.getById(inBook);
+      expect(d!.notebookId, isNull);
+      // 防止未使用变量警告
+      expect(outside, isPositive);
+    });
   });
 
   group('NoteRepository', () {

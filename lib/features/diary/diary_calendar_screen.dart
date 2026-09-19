@@ -23,6 +23,10 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
   DateTime _focused = DateTime.now();
   int _selectedDay = _dayOf(DateTime.now());
 
+  /// 当前日记本过滤：null = 所有日记，-1 = 未归本，>0 = 具体本
+  int? _notebookFilter;
+  String _filterName = '所有日记';
+
   static int _dayOf(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
 
   @override
@@ -30,13 +34,15 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
     final month = _focused.year * 100 + _focused.month;
-    final diaries = ref.watch(diaryRepoProvider).watchByMonth(month);
-    final dayList = ref.watch(diaryRepoProvider).watchByDate(_selectedDay);
+    final diaries =
+        ref.watch(diaryRepoProvider).watchByMonthIn(month, _notebookFilter);
+    final dayList =
+        ref.watch(diaryRepoProvider).watchByDateIn(_selectedDay, _notebookFilter);
     final moods = ref.watch(diaryRepoProvider).watchMoods();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('日记'),
+        title: Text(_filterName),
         actions: [
           // 统计入口带文字，不再让用户猜图标是干嘛的
           TextButton.icon(
@@ -61,10 +67,11 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
           ),
         ],
       ),
+      drawer: _buildDrawer(context, dark),
       floatingActionButton: AppFab(
         icon: PhosphorIconsRegular.notePencil,
         tooltip: '写日记',
-        onPressed: () => context.openDiaryEditor(),
+        onPressed: () => context.openDiaryEditor(null, _notebookFilter),
       ),
       body: Column(
         children: [
@@ -195,6 +202,222 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
         ],
       ),
     );
+  }
+
+  // ---- 日记本抽屉（v4.3 自建分类）----
+
+  void _applyFilter(int? notebookId, String name) {
+    setState(() {
+      _notebookFilter = notebookId;
+      _filterName = name;
+    });
+    Navigator.of(context).pop(); // 关抽屉
+  }
+
+  Widget _buildDrawer(BuildContext context, bool dark) {
+    final p = Theme.of(context).colorScheme;
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page, AppSpacing.s16, AppSpacing.page, AppSpacing.s8,
+              ),
+              child: Text(
+                '日记本',
+                style: AppType.title.copyWith(color: p.onSurface),
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<List<(DiaryNotebook, int)>>(
+                stream: ref.watch(diaryRepoProvider).watchDiaryNotebooks(),
+                builder: (context, snap) {
+                  final list = snap.data ?? const <(DiaryNotebook, int)>[];
+                  return ListView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.s8,
+                    ),
+                    children: [
+                      ListTile(
+                        leading: PhosphorIcon(
+                          PhosphorIconsRegular.stack,
+                          color: p.primary,
+                        ),
+                        title: Text('所有日记'),
+                        selected: _notebookFilter == null,
+                        onTap: () => _applyFilter(null, '所有日记'),
+                      ),
+                      for (final (nb, count) in list)
+                        ListTile(
+                          leading: MoodDot(
+                            color: NotebookPalette.resolve(
+                              nb.colorIndex,
+                              dark: dark,
+                            ),
+                            size: 10,
+                          ),
+                          title: Text(nb.name),
+                          trailing: Text(
+                            '$count',
+                            style: AppType.caption.copyWith(
+                              color: p.onSurfaceVariant,
+                            ),
+                          ),
+                          selected: _notebookFilter == nb.id,
+                          onTap: () => _applyFilter(nb.id, nb.name),
+                          onLongPress: () =>
+                              _diaryNotebookActions(context, nb),
+                        ),
+                      ListTile(
+                        leading: PhosphorIcon(
+                          PhosphorIconsRegular.plusCircle,
+                          color: p.onSurfaceVariant,
+                        ),
+                        title: Text(
+                          '新建日记本',
+                          style: AppType.body.copyWith(
+                            color: p.onSurfaceVariant,
+                          ),
+                        ),
+                        onTap: () => _editDiaryNotebook(context, null),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _diaryNotebookActions(BuildContext context, DiaryNotebook nb) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const PhosphorIcon(PhosphorIconsRegular.pencilSimple),
+              title: const Text('重命名 / 换色'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editDiaryNotebook(context, nb);
+              },
+            ),
+            ListTile(
+              leading: PhosphorIcon(
+                PhosphorIconsRegular.trash,
+                color: Theme.of(ctx).colorScheme.error,
+              ),
+              title: Text(
+                '删除日记本',
+                style: AppType.body.copyWith(
+                  color: Theme.of(ctx).colorScheme.error,
+                ),
+              ),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await showConfirmSheet(
+                  context,
+                  title: '删除「${nb.name}」？',
+                  message: '里面的日记不会删，会变回未归本',
+                );
+                if (ok) {
+                  await ref
+                      .read(diaryRepoProvider)
+                      .deleteDiaryNotebook(nb.id);
+                  if (_notebookFilter == nb.id && mounted) {
+                    setState(() {
+                      _notebookFilter = null;
+                      _filterName = '所有日记';
+                    });
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editDiaryNotebook(BuildContext context, DiaryNotebook? nb) async {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final p = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController(text: nb?.name ?? '');
+    var colorIndex = nb?.colorIndex ?? 1;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.page, 0, AppSpacing.page,
+            AppSpacing.s24 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                nb == null ? '新建日记本' : '编辑日记本',
+                style: AppType.headline.copyWith(color: p.onSurface),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              TextField(
+                controller: nameCtrl,
+                autofocus: nb == null,
+                decoration: const InputDecoration(labelText: '名称，如：碎碎念'),
+                style: AppType.body.copyWith(color: p.onSurface),
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              Wrap(
+                spacing: AppSpacing.s8,
+                children: [
+                  for (var i = 0; i < NotebookPalette.presets.length; i++)
+                    GestureDetector(
+                      onTap: () => setSheet(() => colorIndex = i),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: NotebookPalette.resolve(i, dark: dark),
+                          border: colorIndex == i
+                              ? Border.all(color: p.primary, width: 2.5)
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s24),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    await ref
+        .read(diaryRepoProvider)
+        .saveDiaryNotebook(id: nb?.id, name: name, colorIndex: colorIndex);
   }
 }
 

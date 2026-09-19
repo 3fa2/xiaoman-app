@@ -179,25 +179,24 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
             onChanged: (m) => setState(() => _remindBefore = m),
           ),
           const SizedBox(height: AppSpacing.withinBlock),
-          Row(
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpacing.s8,
+            runSpacing: AppSpacing.s8,
             children: [
               Text('颜色', style: AppType.label.copyWith(color: p.onSurfaceVariant)),
-              const SizedBox(width: AppSpacing.s8),
-              for (var i = 0; i < 4; i++)
-                Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.s8),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _colorIndex = i),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: SchedulePalette.of(i, dark: dark),
-                        border: _colorIndex == i
-                            ? Border.all(color: p.primary, width: 2)
-                            : null,
-                      ),
+              for (var i = 0; i < SchedulePalette.lightColors.length; i++)
+                GestureDetector(
+                  onTap: () => setState(() => _colorIndex = i),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: SchedulePalette.of(i, dark: dark),
+                      border: _colorIndex == i
+                          ? Border.all(color: p.primary, width: 2)
+                          : null,
                     ),
                   ),
                 ),

@@ -17,9 +17,20 @@ class Diaries extends Table {
   TextColumn get title => text().withDefault(const Constant(''))();
   TextColumn get content => text().withDefault(const Constant(''))();
   TextColumn get tags => text().withDefault(const Constant(''))(); // csv（v4.2 新增）
+  IntColumn get notebookId => integer().nullable()(); // 归属日记本（v4.3 新增，null=未归本）
   IntColumn get moodId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+}
+
+/// ①b 日记本：用户自建分类（v4.3 新增，碎碎念/认知日记/…）
+@DataClassName('DiaryNotebookRow')
+class DiaryNotebooks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  IntColumn get colorIndex => integer().withDefault(const Constant(0))(); // NotebookPalette
+  IntColumn get sortOrder => integer()();
+  DateTimeColumn get createdAt => dateTime()();
 }
 
 /// 心情：8 预设 + 用户自定义（hue）

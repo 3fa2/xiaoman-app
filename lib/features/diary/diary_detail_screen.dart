@@ -106,12 +106,21 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
               AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
             ),
             children: [
+              // 无标题：用日期作头部，不再显示「无题」
               Hero(
                 tag: 'diary-cover-${d.id}',
                 child: Material(
                   color: Colors.transparent,
                   child: Text(
-                    d.title.isEmpty ? '无题' : d.title,
+                    d.title.isEmpty
+                        ? DateFormat('M月d日 EEEE', 'zh_CN').format(
+                            DateTime(
+                              d.dateDay ~/ 10000,
+                              (d.dateDay ~/ 100) % 100,
+                              d.dateDay % 100,
+                            ),
+                          )
+                        : d.title,
                     style: AppType.display.copyWith(color: p.onSurface),
                   ),
                 ),
@@ -119,16 +128,18 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
               const SizedBox(height: AppSpacing.s8),
               Row(
                 children: [
-                  Text(
-                    DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(
-                      DateTime(
-                        d.dateDay ~/ 10000,
-                        (d.dateDay ~/ 100) % 100,
-                        d.dateDay % 100,
+                  // 有标题才显示日期行（无标题时日期已在头部）
+                  if (d.title.isNotEmpty)
+                    Text(
+                      DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(
+                        DateTime(
+                          d.dateDay ~/ 10000,
+                          (d.dateDay ~/ 100) % 100,
+                          d.dateDay % 100,
+                        ),
                       ),
+                      style: AppType.caption.copyWith(color: p.onSurfaceVariant),
                     ),
-                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
-                  ),
                   const Spacer(),
                   FutureBuilder<List<Mood>>(
                     future: moodsFuture,

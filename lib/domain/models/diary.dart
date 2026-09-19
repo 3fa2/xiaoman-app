@@ -5,6 +5,7 @@ class Diary {
   final String title;
   final String content;
   final List<String> tags; // 标签（csv 存储，域层转 List）
+  final int? notebookId; // 归属日记本，null=未归本
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -15,6 +16,7 @@ class Diary {
     required this.title,
     required this.content,
     this.tags = const [],
+    this.notebookId,
     required this.moodId,
     required this.createdAt,
     required this.updatedAt,
@@ -38,6 +40,21 @@ class Mood {
     required this.name,
     required this.hue,
     required this.isPreset,
+    required this.sortOrder,
+  });
+}
+
+/// 日记本：用户自建分类（碎碎念/认知日记/…）
+class DiaryNotebook {
+  final int id;
+  final String name;
+  final int colorIndex;
+  final int sortOrder;
+
+  const DiaryNotebook({
+    required this.id,
+    required this.name,
+    required this.colorIndex,
     required this.sortOrder,
   });
 }

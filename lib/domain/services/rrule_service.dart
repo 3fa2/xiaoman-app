@@ -191,6 +191,9 @@ class RruleService {
         return null;
       case RepeatFreq.daily:
         return interval == 1 ? 'FREQ=DAILY' : 'FREQ=DAILY;INTERVAL=$interval';
+      case RepeatFreq.dailyInterval:
+        final n = interval < 2 ? 3 : interval;
+        return 'FREQ=DAILY;INTERVAL=$n';
       case RepeatFreq.weekly:
         if (weekdays.isEmpty) {
           return interval == 1 ? 'FREQ=WEEKLY' : 'FREQ=WEEKLY;INTERVAL=$interval';
@@ -214,6 +217,7 @@ class RruleService {
 enum RepeatFreq {
   none,
   daily,
+  dailyInterval, // 每隔 N 天（INTERVAL > 1）
   weekly,
   monthlyByNthWeekday,
   monthlyByDate,

@@ -45,6 +45,12 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _notebookIdMeta =
+      const VerificationMeta('notebookId');
+  @override
+  late final GeneratedColumn<int> notebookId = GeneratedColumn<int>(
+      'notebook_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _moodIdMeta = const VerificationMeta('moodId');
   @override
   late final GeneratedColumn<int> moodId = GeneratedColumn<int>(
@@ -63,8 +69,17 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, dateDay, title, content, tags, moodId, createdAt, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        dateDay,
+        title,
+        content,
+        tags,
+        notebookId,
+        moodId,
+        createdAt,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -95,6 +110,12 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
     if (data.containsKey('tags')) {
       context.handle(
           _tagsMeta, tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta));
+    }
+    if (data.containsKey('notebook_id')) {
+      context.handle(
+          _notebookIdMeta,
+          notebookId.isAcceptableOrUnknown(
+              data['notebook_id']!, _notebookIdMeta));
     }
     if (data.containsKey('mood_id')) {
       context.handle(_moodIdMeta,
@@ -131,6 +152,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
       tags: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}tags'])!,
+      notebookId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}notebook_id']),
       moodId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}mood_id']),
       createdAt: attachedDatabase.typeMapping
@@ -152,6 +175,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   final String title;
   final String content;
   final String tags;
+  final int? notebookId;
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -161,6 +185,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       required this.title,
       required this.content,
       required this.tags,
+      this.notebookId,
       this.moodId,
       required this.createdAt,
       required this.updatedAt});
@@ -172,6 +197,9 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
     map['title'] = Variable<String>(title);
     map['content'] = Variable<String>(content);
     map['tags'] = Variable<String>(tags);
+    if (!nullToAbsent || notebookId != null) {
+      map['notebook_id'] = Variable<int>(notebookId);
+    }
     if (!nullToAbsent || moodId != null) {
       map['mood_id'] = Variable<int>(moodId);
     }
@@ -187,6 +215,9 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       title: Value(title),
       content: Value(content),
       tags: Value(tags),
+      notebookId: notebookId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notebookId),
       moodId:
           moodId == null && nullToAbsent ? const Value.absent() : Value(moodId),
       createdAt: Value(createdAt),
@@ -203,6 +234,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       title: serializer.fromJson<String>(json['title']),
       content: serializer.fromJson<String>(json['content']),
       tags: serializer.fromJson<String>(json['tags']),
+      notebookId: serializer.fromJson<int?>(json['notebookId']),
       moodId: serializer.fromJson<int?>(json['moodId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -217,6 +249,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       'title': serializer.toJson<String>(title),
       'content': serializer.toJson<String>(content),
       'tags': serializer.toJson<String>(tags),
+      'notebookId': serializer.toJson<int?>(notebookId),
       'moodId': serializer.toJson<int?>(moodId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -229,6 +262,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           String? title,
           String? content,
           String? tags,
+          Value<int?> notebookId = const Value.absent(),
           Value<int?> moodId = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt}) =>
@@ -238,6 +272,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
         title: title ?? this.title,
         content: content ?? this.content,
         tags: tags ?? this.tags,
+        notebookId: notebookId.present ? notebookId.value : this.notebookId,
         moodId: moodId.present ? moodId.value : this.moodId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -249,6 +284,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       title: data.title.present ? data.title.value : this.title,
       content: data.content.present ? data.content.value : this.content,
       tags: data.tags.present ? data.tags.value : this.tags,
+      notebookId:
+          data.notebookId.present ? data.notebookId.value : this.notebookId,
       moodId: data.moodId.present ? data.moodId.value : this.moodId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -263,6 +300,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           ..write('title: $title, ')
           ..write('content: $content, ')
           ..write('tags: $tags, ')
+          ..write('notebookId: $notebookId, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -271,8 +309,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, dateDay, title, content, tags, moodId, createdAt, updatedAt);
+  int get hashCode => Object.hash(id, dateDay, title, content, tags, notebookId,
+      moodId, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -282,6 +320,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           other.title == this.title &&
           other.content == this.content &&
           other.tags == this.tags &&
+          other.notebookId == this.notebookId &&
           other.moodId == this.moodId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -293,6 +332,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
   final Value<String> title;
   final Value<String> content;
   final Value<String> tags;
+  final Value<int?> notebookId;
   final Value<int?> moodId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -302,6 +342,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.title = const Value.absent(),
     this.content = const Value.absent(),
     this.tags = const Value.absent(),
+    this.notebookId = const Value.absent(),
     this.moodId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -312,6 +353,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.title = const Value.absent(),
     this.content = const Value.absent(),
     this.tags = const Value.absent(),
+    this.notebookId = const Value.absent(),
     this.moodId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -324,6 +366,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     Expression<String>? title,
     Expression<String>? content,
     Expression<String>? tags,
+    Expression<int>? notebookId,
     Expression<int>? moodId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -334,6 +377,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       if (title != null) 'title': title,
       if (content != null) 'content': content,
       if (tags != null) 'tags': tags,
+      if (notebookId != null) 'notebook_id': notebookId,
       if (moodId != null) 'mood_id': moodId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -346,6 +390,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       Value<String>? title,
       Value<String>? content,
       Value<String>? tags,
+      Value<int?>? notebookId,
       Value<int?>? moodId,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
@@ -355,6 +400,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       title: title ?? this.title,
       content: content ?? this.content,
       tags: tags ?? this.tags,
+      notebookId: notebookId ?? this.notebookId,
       moodId: moodId ?? this.moodId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -379,6 +425,9 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     if (tags.present) {
       map['tags'] = Variable<String>(tags.value);
     }
+    if (notebookId.present) {
+      map['notebook_id'] = Variable<int>(notebookId.value);
+    }
     if (moodId.present) {
       map['mood_id'] = Variable<int>(moodId.value);
     }
@@ -399,6 +448,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
           ..write('title: $title, ')
           ..write('content: $content, ')
           ..write('tags: $tags, ')
+          ..write('notebookId: $notebookId, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -1274,6 +1324,307 @@ class MediaItemsCompanion extends UpdateCompanion<MediaItemRow> {
           ..write('width: $width, ')
           ..write('height: $height, ')
           ..write('durationMs: $durationMs, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DiaryNotebooksTable extends DiaryNotebooks
+    with TableInfo<$DiaryNotebooksTable, DiaryNotebookRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiaryNotebooksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _colorIndexMeta =
+      const VerificationMeta('colorIndex');
+  @override
+  late final GeneratedColumn<int> colorIndex = GeneratedColumn<int>(
+      'color_index', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, name, colorIndex, sortOrder, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'diary_notebooks';
+  @override
+  VerificationContext validateIntegrity(Insertable<DiaryNotebookRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color_index')) {
+      context.handle(
+          _colorIndexMeta,
+          colorIndex.isAcceptableOrUnknown(
+              data['color_index']!, _colorIndexMeta));
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    } else if (isInserting) {
+      context.missing(_sortOrderMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DiaryNotebookRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiaryNotebookRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      colorIndex: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}color_index'])!,
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $DiaryNotebooksTable createAlias(String alias) {
+    return $DiaryNotebooksTable(attachedDatabase, alias);
+  }
+}
+
+class DiaryNotebookRow extends DataClass
+    implements Insertable<DiaryNotebookRow> {
+  final int id;
+  final String name;
+  final int colorIndex;
+  final int sortOrder;
+  final DateTime createdAt;
+  const DiaryNotebookRow(
+      {required this.id,
+      required this.name,
+      required this.colorIndex,
+      required this.sortOrder,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['color_index'] = Variable<int>(colorIndex);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DiaryNotebooksCompanion toCompanion(bool nullToAbsent) {
+    return DiaryNotebooksCompanion(
+      id: Value(id),
+      name: Value(name),
+      colorIndex: Value(colorIndex),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DiaryNotebookRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiaryNotebookRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      colorIndex: serializer.fromJson<int>(json['colorIndex']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'colorIndex': serializer.toJson<int>(colorIndex),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DiaryNotebookRow copyWith(
+          {int? id,
+          String? name,
+          int? colorIndex,
+          int? sortOrder,
+          DateTime? createdAt}) =>
+      DiaryNotebookRow(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        colorIndex: colorIndex ?? this.colorIndex,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  DiaryNotebookRow copyWithCompanion(DiaryNotebooksCompanion data) {
+    return DiaryNotebookRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      colorIndex:
+          data.colorIndex.present ? data.colorIndex.value : this.colorIndex,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiaryNotebookRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('colorIndex: $colorIndex, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, colorIndex, sortOrder, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiaryNotebookRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.colorIndex == this.colorIndex &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt);
+}
+
+class DiaryNotebooksCompanion extends UpdateCompanion<DiaryNotebookRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> colorIndex;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  const DiaryNotebooksCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.colorIndex = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  DiaryNotebooksCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.colorIndex = const Value.absent(),
+    required int sortOrder,
+    required DateTime createdAt,
+  })  : name = Value(name),
+        sortOrder = Value(sortOrder),
+        createdAt = Value(createdAt);
+  static Insertable<DiaryNotebookRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? colorIndex,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (colorIndex != null) 'color_index': colorIndex,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  DiaryNotebooksCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? name,
+      Value<int>? colorIndex,
+      Value<int>? sortOrder,
+      Value<DateTime>? createdAt}) {
+    return DiaryNotebooksCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      colorIndex: colorIndex ?? this.colorIndex,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (colorIndex.present) {
+      map['color_index'] = Variable<int>(colorIndex.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiaryNotebooksCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('colorIndex: $colorIndex, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -4055,6 +4406,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DiariesTable diaries = $DiariesTable(this);
   late final $MoodsTable moods = $MoodsTable(this);
   late final $MediaItemsTable mediaItems = $MediaItemsTable(this);
+  late final $DiaryNotebooksTable diaryNotebooks = $DiaryNotebooksTable(this);
   late final $NotebooksTable notebooks = $NotebooksTable(this);
   late final $NotesTable notes = $NotesTable(this);
   late final $TodoItemsTable todoItems = $TodoItemsTable(this);
@@ -4072,6 +4424,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         diaries,
         moods,
         mediaItems,
+        diaryNotebooks,
         notebooks,
         notes,
         todoItems,
@@ -4088,6 +4441,7 @@ typedef $$DiariesTableCreateCompanionBuilder = DiariesCompanion Function({
   Value<String> title,
   Value<String> content,
   Value<String> tags,
+  Value<int?> notebookId,
   Value<int?> moodId,
   required DateTime createdAt,
   required DateTime updatedAt,
@@ -4098,6 +4452,7 @@ typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<String> title,
   Value<String> content,
   Value<String> tags,
+  Value<int?> notebookId,
   Value<int?> moodId,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -4126,6 +4481,9 @@ class $$DiariesTableFilterComposer
 
   ColumnFilters<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get notebookId => $composableBuilder(
+      column: $table.notebookId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get moodId => $composableBuilder(
       column: $table.moodId, builder: (column) => ColumnFilters(column));
@@ -4161,6 +4519,9 @@ class $$DiariesTableOrderingComposer
   ColumnOrderings<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get notebookId => $composableBuilder(
+      column: $table.notebookId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get moodId => $composableBuilder(
       column: $table.moodId, builder: (column) => ColumnOrderings(column));
 
@@ -4194,6 +4555,9 @@ class $$DiariesTableAnnotationComposer
 
   GeneratedColumn<String> get tags =>
       $composableBuilder(column: $table.tags, builder: (column) => column);
+
+  GeneratedColumn<int> get notebookId => $composableBuilder(
+      column: $table.notebookId, builder: (column) => column);
 
   GeneratedColumn<int> get moodId =>
       $composableBuilder(column: $table.moodId, builder: (column) => column);
@@ -4233,6 +4597,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<String> title = const Value.absent(),
             Value<String> content = const Value.absent(),
             Value<String> tags = const Value.absent(),
+            Value<int?> notebookId = const Value.absent(),
             Value<int?> moodId = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -4243,6 +4608,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             title: title,
             content: content,
             tags: tags,
+            notebookId: notebookId,
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -4253,6 +4619,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<String> title = const Value.absent(),
             Value<String> content = const Value.absent(),
             Value<String> tags = const Value.absent(),
+            Value<int?> notebookId = const Value.absent(),
             Value<int?> moodId = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
@@ -4263,6 +4630,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             title: title,
             content: content,
             tags: tags,
+            notebookId: notebookId,
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -4725,6 +5093,178 @@ typedef $$MediaItemsTableProcessedTableManager = ProcessedTableManager<
       BaseReferences<_$AppDatabase, $MediaItemsTable, MediaItemRow>
     ),
     MediaItemRow,
+    PrefetchHooks Function()>;
+typedef $$DiaryNotebooksTableCreateCompanionBuilder = DiaryNotebooksCompanion
+    Function({
+  Value<int> id,
+  required String name,
+  Value<int> colorIndex,
+  required int sortOrder,
+  required DateTime createdAt,
+});
+typedef $$DiaryNotebooksTableUpdateCompanionBuilder = DiaryNotebooksCompanion
+    Function({
+  Value<int> id,
+  Value<String> name,
+  Value<int> colorIndex,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+});
+
+class $$DiaryNotebooksTableFilterComposer
+    extends Composer<_$AppDatabase, $DiaryNotebooksTable> {
+  $$DiaryNotebooksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get colorIndex => $composableBuilder(
+      column: $table.colorIndex, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$DiaryNotebooksTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiaryNotebooksTable> {
+  $$DiaryNotebooksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get colorIndex => $composableBuilder(
+      column: $table.colorIndex, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DiaryNotebooksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiaryNotebooksTable> {
+  $$DiaryNotebooksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get colorIndex => $composableBuilder(
+      column: $table.colorIndex, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DiaryNotebooksTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DiaryNotebooksTable,
+    DiaryNotebookRow,
+    $$DiaryNotebooksTableFilterComposer,
+    $$DiaryNotebooksTableOrderingComposer,
+    $$DiaryNotebooksTableAnnotationComposer,
+    $$DiaryNotebooksTableCreateCompanionBuilder,
+    $$DiaryNotebooksTableUpdateCompanionBuilder,
+    (
+      DiaryNotebookRow,
+      BaseReferences<_$AppDatabase, $DiaryNotebooksTable, DiaryNotebookRow>
+    ),
+    DiaryNotebookRow,
+    PrefetchHooks Function()> {
+  $$DiaryNotebooksTableTableManager(
+      _$AppDatabase db, $DiaryNotebooksTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiaryNotebooksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiaryNotebooksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiaryNotebooksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<int> colorIndex = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+          }) =>
+              DiaryNotebooksCompanion(
+            id: id,
+            name: name,
+            colorIndex: colorIndex,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String name,
+            Value<int> colorIndex = const Value.absent(),
+            required int sortOrder,
+            required DateTime createdAt,
+          }) =>
+              DiaryNotebooksCompanion.insert(
+            id: id,
+            name: name,
+            colorIndex: colorIndex,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$DiaryNotebooksTable, DiaryNotebookRow>(table),
+                    BaseReferences<_$AppDatabase, $DiaryNotebooksTable,
+                        DiaryNotebookRow>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DiaryNotebooksTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DiaryNotebooksTable,
+    DiaryNotebookRow,
+    $$DiaryNotebooksTableFilterComposer,
+    $$DiaryNotebooksTableOrderingComposer,
+    $$DiaryNotebooksTableAnnotationComposer,
+    $$DiaryNotebooksTableCreateCompanionBuilder,
+    $$DiaryNotebooksTableUpdateCompanionBuilder,
+    (
+      DiaryNotebookRow,
+      BaseReferences<_$AppDatabase, $DiaryNotebooksTable, DiaryNotebookRow>
+    ),
+    DiaryNotebookRow,
     PrefetchHooks Function()>;
 typedef $$NotebooksTableCreateCompanionBuilder = NotebooksCompanion Function({
   Value<int> id,
@@ -6156,6 +6696,8 @@ class $AppDatabaseManager {
       $$MoodsTableTableManager(_db, _db.moods);
   $$MediaItemsTableTableManager get mediaItems =>
       $$MediaItemsTableTableManager(_db, _db.mediaItems);
+  $$DiaryNotebooksTableTableManager get diaryNotebooks =>
+      $$DiaryNotebooksTableTableManager(_db, _db.diaryNotebooks);
   $$NotebooksTableTableManager get notebooks =>
       $$NotebooksTableTableManager(_db, _db.notebooks);
   $$NotesTableTableManager get notes =>

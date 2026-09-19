@@ -71,7 +71,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'edit',
-                    builder: (c, s) => const DiaryEditorScreen(diaryId: null),
+                    builder: (c, s) => DiaryEditorScreen(
+                      diaryId: null,
+                      notebookId: int.tryParse(
+                        s.uri.queryParameters['notebookId'] ?? '',
+                      ),
+                    ),
                   ),
                   GoRoute(
                     path: 'detail/:id',
@@ -172,8 +177,18 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 /// 供页面跳转用的小助手（统一命名，避免裸字符串散落）
 extension AppNav on BuildContext {
-  void openDiaryEditor([int? id]) =>
-      id == null ? push('/diary/edit') : push('/diary/edit/$id');
+  void openDiaryEditor([int? id, int? notebookId]) {
+    if (id != null) {
+      push('/diary/edit/$id');
+      return;
+    }
+    // 从某本进入新建时带上默认归属（-1 = 未归本视图，视为不传）
+    if (notebookId != null && notebookId > 0) {
+      push('/diary/edit?notebookId=$notebookId');
+      return;
+    }
+    push('/diary/edit');
+  }
   void openDiaryDetail(int id) => push('/diary/detail/$id');
   void openDiarySearch() => push('/diary/search');
   void openMoodTrend() => push('/diary/trend');

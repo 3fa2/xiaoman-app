@@ -152,22 +152,27 @@ class TemplateManageScreen extends ConsumerWidget {
     var start = t?.startMinutes ?? 9 * 60;
     var duration = t?.durationMinutes ?? 60;
     var remind = t?.remindMinutesBefore ?? 0;
-    var freq = RepeatFreq.none;
-    var weekdays = <int>[1, 2, 3, 4, 5];
-    var nthWeek = 1;
-    var monthDay = 1;
+  var freq = RepeatFreq.none;
+  var weekdays = <int>[1, 2, 3, 4, 5];
+  var nthWeek = 1;
+  var monthDay = 1;
+  var interval = 1;
 
-    // 回填规则（已有模板）
-    if (t?.rrule != null && t!.rrule!.isNotEmpty) {
-      final parts = RruleService.parse(t.rrule!);
-      freq = switch (parts['FREQ']) {
-        'WEEKLY' => RepeatFreq.weekly,
-        'MONTHLY' => (parts['BYSETPOS'] ?? '').isNotEmpty
-            ? RepeatFreq.monthlyByNthWeekday
-            : RepeatFreq.monthlyByDate,
-        'YEARLY' => RepeatFreq.yearly,
-        _ => RepeatFreq.daily,
-      };
+  // 回填规则（已有模板）
+  if (t?.rrule != null && t!.rrule!.isNotEmpty) {
+    final parts = RruleService.parse(t.rrule!);
+    interval = int.tryParse(parts['INTERVAL'] ?? '1') ?? 1;
+    freq = switch (parts['FREQ']) {
+      'WEEKLY' => RepeatFreq.weekly,
+      'MONTHLY' => (parts['BYSETPOS'] ?? '').isNotEmpty
+          ? RepeatFreq.monthlyByNthWeekday
+          : RepeatFreq.monthlyByDate,
+      'YEARLY' => RepeatFreq.yearly,
+      'DAILY' => interval > 1
+          ? RepeatFreq.dailyInterval
+          : RepeatFreq.daily,
+      _ => RepeatFreq.daily,
+    };
       final byDay = parts['BYDAY'] ?? '';
       if (byDay.isNotEmpty) {
         const map = {
@@ -280,6 +285,10 @@ class TemplateManageScreen extends ConsumerWidget {
                       value: RepeatFreq.daily, child: Text('每天'),
                     ),
                     DropdownMenuItem(
+                      value: RepeatFreq.dailyInterval,
+                      child: Text('每隔几天'),
+                    ),
+                    DropdownMenuItem(
                       value: RepeatFreq.weekly, child: Text('每周（选周几）'),
                     ),
                     DropdownMenuItem(
@@ -296,6 +305,16 @@ class TemplateManageScreen extends ConsumerWidget {
                   ],
                   onChanged: (v) => setSheet(() => freq = v ?? RepeatFreq.none),
                 ),
+                if (freq == RepeatFreq.dailyInterval)
+                  DropdownButtonFormField<int>(
+                    initialValue: interval < 2 ? 3 : interval,
+                    decoration: const InputDecoration(labelText: '间隔天数'),
+                    items: [
+                      for (var n = 2; n <= 30; n++)
+                        DropdownMenuItem(value: n, child: Text('每 $n 天')),
+                    ],
+                    onChanged: (v) => setSheet(() => interval = v ?? 3),
+                  ),
                 if (freq == RepeatFreq.weekly ||
                     freq == RepeatFreq.monthlyByNthWeekday) ...[
                   const SizedBox(height: AppSpacing.withinBlock),
@@ -370,6 +389,9 @@ class TemplateManageScreen extends ConsumerWidget {
 
     final rrule = RruleService.build(
       freq: freq,
+      interval: freq == RepeatFreq.dailyInterval
+          ? (interval < 2 ? 3 : interval)
+          : 1,
       weekdays: weekdays,
       nthWeek: nthWeek,
       monthDay: monthDay,

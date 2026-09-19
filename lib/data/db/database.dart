@@ -11,6 +11,7 @@ part 'database.g.dart';
     Diaries,
     Moods,
     MediaItems,
+    DiaryNotebooks,
     Notebooks,
     Notes,
     TodoItems,
@@ -27,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -44,6 +45,11 @@ class AppDatabase extends _$AppDatabase {
           // v1 → v2：日记加标签列（csv），保留已有数据
           if (from < 2) {
             await m.addColumn(diaries, diaries.tags);
+          }
+          // v2 → v3：多日记本（自建分类）
+          if (from < 3) {
+            await m.createTable(diaryNotebooks);
+            await m.addColumn(diaries, diaries.notebookId);
           }
         },
       );
@@ -103,8 +109,7 @@ class AppDatabase extends _$AppDatabase {
     await customStatement('PRAGMA wal_checkpoint(FULL)');
   }
 
-  /// FTS5 全文搜索日记。unicode61 对中文整串分词，>=3 字走 MATCH，
-  /// 短词回退 LIKE（个人数据量级全表扫可接受）。
+  /// v1 → v2：日记标签进 LIKE 搜索（v3 起 diary 表有 tags 列）
   Future<List<DiariesRow>> searchDiaries(String query) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
@@ -159,6 +164,7 @@ class AppDatabase extends _$AppDatabase {
         title: r.read<String>('title'),
         content: r.read<String>('content'),
         tags: r.read<String>('tags'),
+        notebookId: r.readNullable<int>('notebook_id'),
         moodId: r.readNullable<int>('mood_id'),
         createdAt: r.read<DateTime>('created_at'),
         updatedAt: r.read<DateTime>('updated_at'),

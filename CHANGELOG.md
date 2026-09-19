@@ -3,13 +3,24 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '4fa8382e-098c-421a-afc0-b96f5d8d9340'
-  PropagateID: '4fa8382e-098c-421a-afc0-b96f5d8d9340'
-  ReservedCode1: '28fd79db-0e51-42f9-a7f6-6d78ff945860'
-  ReservedCode2: '28fd79db-0e51-42f9-a7f6-6d78ff945860'
+  ProduceID: 'b09f6c51-39a0-48fb-ad00-035ccdbf68b0'
+  PropagateID: 'b09f6c51-39a0-48fb-ad00-035ccdbf68b0'
+  ReservedCode1: '766e6dc9-8f90-4ab0-b08a-d9fb49b67d80'
+  ReservedCode2: '766e6dc9-8f90-4ab0-b08a-d9fb49b67d80'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.3.0+16（2026-09-19）· "大改"四项需求
+
+用户笔记截图反馈四项，全部完成：
+
+- **多日记本（核心新功能）**：自建分类（碎碎念/认知日记/…），schema v3 新增 diary_notebooks 表 + diaries.notebookId（旧数据保留，全部变"未归本"）。日记页左侧抽屉：所有日记/各日记本（色点+篇数）/新建，长按重命名换色或删除（删除本不删日记）。编辑器加"归入日记本"选择行；从某本点 FAB 新建自动归入该本
+- **"无题"去掉**：详情页无标题时头部直接显示日期（M月d日 EEEE），不再显示"无题"；编辑器标题 label 改"标题（可不填，留空显示日期）"
+- **日程"每隔几天"补回**：模板编辑下拉新增"每隔几天"（2-30 天，INTERVAL）；数据层早已支持（rrule_test 的 DAILY INTERVAL=3），是 v4 重做时 UI 丢失
+- **颜色扩充**：日程色 4→8（灰玫瑰/灰青/姜黄/石蓝），笔记本色/日记本色板 5→8（陶棕/灰青/橄榄）；日程编辑颜色选择改 Wrap 自适应
+
+测试 49/49 全过（新增日记本测试：建本+归属过滤+删除本日记变未归本）；analyze 0 error/0 warning；架构 0 违规；schemaVersion 2→3；APK 验签 CN=Trinity。
 
 ## v4.2.1+15（2026-09-19）· 实况照片预览热修
 

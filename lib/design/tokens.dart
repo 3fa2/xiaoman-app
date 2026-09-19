@@ -139,10 +139,10 @@ abstract final class MoodPalette {
       HSLColor.fromAHSL(1, hue, 0.32, dark ? 0.52 : 0.60).toColor();
 }
 
-/// 笔记本色：5 + null（跟 primary），饱和度全部 <= 30%。
-/// 只在笔记本卡片 / 编辑器标题栏小点里用。
+/// 笔记本色 / 日记本色：8 + null（跟 primary），饱和度全部 <= 30%。
+/// 只在卡片色点/色板选择器里用。
 abstract final class NotebookPalette {
-  /// 0 = null（跟 primary），1-5 为预设
+  /// 0 = null（跟 primary），1-7 为预设
   static const presets = <Color?>[
     null,
     Color(0xFF7C93A8), // 雾蓝灰
@@ -150,6 +150,9 @@ abstract final class NotebookPalette {
     Color(0xFFB08A6E), // 燕麦
     Color(0xFF9C8296), // 灰紫
     Color(0xFF8A96A8), // 岩灰
+    Color(0xFFA89080), // 陶棕
+    Color(0xFF7E97A0), // 灰青
+    Color(0xFF9B8F7C), // 橄榄
   ];
 
   static Color resolve(int index, {required bool dark}) {
@@ -159,19 +162,27 @@ abstract final class NotebookPalette {
   }
 }
 
-/// 日程色：4 个，饱和度低，只在日程块内出现
+/// 日程色：8 个，饱和度低，只在日程块内出现
 abstract final class SchedulePalette {
   static const lightColors = <Color>[
     Color(0xFF6E8CA8), // 雾蓝
     Color(0xFF7FA08A), // 苔绿
     Color(0xFFA89380), // 陶灰
     Color(0xFF8E8AA8), // 雾紫
+    Color(0xFFA8878B), // 灰玫瑰
+    Color(0xFF8AA0A8), // 灰青
+    Color(0xFFA89E80), // 姜黄
+    Color(0xFF889BAA), // 石蓝
   ];
   static const darkColors = <Color>[
     Color(0xFF8FA9C2),
     Color(0xFF93B3A0),
     Color(0xFFB9A795),
     Color(0xFFA3A0BE),
+    Color(0xFFBEA0A4),
+    Color(0xFFA2B5BC),
+    Color(0xFFBFB490),
+    Color(0xFF9DAFBF),
   ];
 
   static Color of(int index, {required bool dark}) {
