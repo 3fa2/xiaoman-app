@@ -218,9 +218,12 @@ class _MoodCheckin extends ConsumerWidget {
             final today = DateTime.now();
             final todayDay =
                 today.year * 10000 + today.month * 100 + today.day;
-            final todays =
-                all.where((d) => d.dateDay == todayDay).toList();
-            final current = todays.isEmpty ? null : todays.first.moodId;
+            final todays = all.where((d) => d.dateDay == todayDay).toList();
+            // 同日多篇：取最新创建且带心情的一篇作为"当日心情"（否则打卡态不稳定）
+            final withMood = todays.where((d) => d.moodId != null).toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            final current =
+                withMood.isEmpty ? null : withMood.first.moodId;
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
               child: Column(
@@ -303,9 +306,12 @@ class _MoodWeekStrip extends StatelessWidget {
               final day = d.year * 10000 + d.month * 100 + d.day;
               final dayDiaries =
                   diaries.where((x) => x.dateDay == day).toList();
-              final moodId = dayDiaries.isEmpty
-                  ? null
-                  : dayDiaries.first.moodId;
+              // 同日多篇：取最新创建且带心情的，作为该天的心情点
+              final withMood = dayDiaries
+                  .where((x) => x.moodId != null)
+                  .toList()
+                ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              final moodId = withMood.isEmpty ? null : withMood.first.moodId;
               final mood = moodId == null ? null : moodMap[moodId];
               final isToday = i == 0;
               return Expanded(

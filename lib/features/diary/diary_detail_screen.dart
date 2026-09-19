@@ -34,6 +34,43 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
     super.dispose();
   }
 
+  /// 媒体缩略图：路径缺失/加载失败时给占位框，绝不 File(null) 崩
+  Widget _mediaThumb(MediaItem m, ColorScheme p) {
+    final path = m.thumbPath ?? m.coverPath;
+    if (path == null) {
+      return Container(
+        width: 110,
+        height: 110,
+        color: p.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: PhosphorIcon(
+          PhosphorIconsRegular.filmStrip,
+          size: 24,
+          color: p.onSurfaceVariant,
+        ),
+      );
+    }
+    return Image.file(
+      File(path),
+      width: 110,
+      height: 110,
+      fit: BoxFit.cover,
+      cacheWidth: 110,
+      cacheHeight: 110,
+      errorBuilder: (_, __, ___) => Container(
+        width: 110,
+        height: 110,
+        color: p.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: PhosphorIcon(
+          PhosphorIconsRegular.filmStrip,
+          size: 24,
+          color: p.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
   /// 播放视频/实况。视频文件缺失或初始化失败时回退全屏图片，点击必有反馈。
   Future<void> _play(MediaItem item) async {
     final videoPath = item.videoPath;
@@ -222,7 +259,6 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                         children: [
                           for (final m in items)
                             GestureDetector(
-                              // 实况/视频都能点按或长按播放；普通图片全屏看
                               onTap: m.kind == MediaKind.image
                                   ? (m.coverPath != null
                                       ? () => showFullscreenImage(
@@ -237,24 +273,7 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                                   ClipRRect(
                                     borderRadius:
                                         BorderRadius.circular(AppRadii.rMd),
-                                    child: m.kind == MediaKind.video &&
-                                            m.thumbPath != null
-                                        ? Image.file(
-                                            File(m.thumbPath!),
-                                            width: 110,
-                                            height: 110,
-                                            fit: BoxFit.cover,
-                                            cacheWidth: 110,
-                                            cacheHeight: 110,
-                                          )
-                                        : Image.file(
-                                            File(m.coverPath!),
-                                            width: 110,
-                                            height: 110,
-                                            fit: BoxFit.cover,
-                                            cacheWidth: 110,
-                                            cacheHeight: 110,
-                                          ),
+                                    child: _mediaThumb(m, p),
                                   ),
                                   if (m.kind == MediaKind.livePhoto)
                                     Positioned(

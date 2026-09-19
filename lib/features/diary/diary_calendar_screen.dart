@@ -434,110 +434,136 @@ class _DiaryCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
-    // 无标题无正文（纯图片日记）时的占位文案
-    final headText = diary.title.isNotEmpty
-        ? diary.title
-        : (diary.summary.isNotEmpty ? diary.summary : '图片日记');
+    // 缩略图可能为 null（视频无 thumb 且无 cover），用守卫占位框代替 File(null) 崩溃
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.rLg),
         onTap: () => context.openDiaryDetail(diary.id),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.cardPad),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          child: FutureBuilder<List<MediaItem>>(
+            future: ref
+                .read(mediaRepoProvider)
+                .listFor(MediaOwner.diary, diary.id),
+            builder: (context, snap) {
+              final items = snap.data ?? const <MediaItem>[];
+              final hasMedia = items.isNotEmpty;
+              // 纯图片日记显示"图片日记"，纯心情打卡显示"心情打卡"
+              final headText = diary.title.isNotEmpty
+                  ? diary.title
+                  : (diary.summary.isNotEmpty
+                      ? diary.summary
+                      : (hasMedia ? '图片日记' : '心情打卡'));
+              final first = hasMedia ? items.first : null;
+              final thumbPath = first == null
+                  ? null
+                  : (first.thumbPath ?? first.coverPath);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            headText,
-                            style: AppType.headline.copyWith(
-                              color: headText == '图片日记'
-                                  ? p.onSurfaceVariant
-                                  : p.onSurface,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                headText,
+                                style: AppType.headline.copyWith(
+                                  color: headText == diary.title ||
+                                          headText == diary.summary
+                                      ? p.onSurface
+                                      : p.onSurfaceVariant,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            maxLines: 1,
+                            if (mood != null) ...[
+                              const SizedBox(width: AppSpacing.s8),
+                              MoodDot(
+                                color: MoodPalette.colorOf(mood!.hue, dark: dark),
+                                label: mood!.name,
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (diary.title.isNotEmpty &&
+                            diary.summary.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.s4),
+                          Text(
+                            diary.summary,
+                            style: AppType.body.copyWith(
+                              color: p.onSurfaceVariant,
+                            ),
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        if (mood != null) ...[
-                          const SizedBox(width: AppSpacing.s8),
-                          MoodDot(
-                            color: MoodPalette.colorOf(mood!.hue, dark: dark),
-                            label: mood!.name,
+                        ],
+                        if (diary.tags.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.s8),
+                          Wrap(
+                            spacing: AppSpacing.s4,
+                            children: [
+                              for (final t in diary.tags)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.s8, vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: p.surfaceContainerHighest,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadii.rSm),
+                                  ),
+                                  child: Text(
+                                    t,
+                                    style: AppType.caption.copyWith(
+                                      color: p.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ],
                     ),
-                    if (diary.title.isNotEmpty && diary.summary.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.s4),
-                      Text(
-                        diary.summary,
-                        style: AppType.body.copyWith(color: p.onSurfaceVariant),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    if (diary.tags.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.s8),
-                      Wrap(
-                        spacing: AppSpacing.s4,
-                        children: [
-                          for (final t in diary.tags)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.s8, vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
+                  ),
+                  if (hasMedia)
+                    Padding(
+                      padding: const EdgeInsets.only(left: AppSpacing.s8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(AppRadii.rSm),
+                        child: thumbPath == null
+                            ? Container(
+                                width: 56,
+                                height: 56,
                                 color: p.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(AppRadii.rSm),
-                              ),
-                              child: Text(
-                                t,
-                                style: AppType.caption.copyWith(
+                                alignment: Alignment.center,
+                                child: PhosphorIcon(
+                                  PhosphorIconsRegular.filmStrip,
+                                  size: 20,
                                   color: p.onSurfaceVariant,
                                 ),
+                              )
+                            : Image.file(
+                                File(thumbPath),
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                cacheWidth: 56,
+                                cacheHeight: 56,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 56,
+                                  height: 56,
+                                  color: p.surfaceContainerHighest,
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              // 媒体缩略图（第一张）：纯图片日记的主要内容
-              FutureBuilder<List<MediaItem>>(
-                future: ref
-                    .read(mediaRepoProvider)
-                    .listFor(MediaOwner.diary, diary.id),
-                builder: (context, snap) {
-                  final items = snap.data ?? const <MediaItem>[];
-                  if (items.isEmpty) return const SizedBox.shrink();
-                  final m = items.first;
-                  final path = m.thumbPath ?? m.coverPath;
-                  if (path == null) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(left: AppSpacing.s8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(AppRadii.rSm),
-                      child: Image.file(
-                        File(path),
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        cacheWidth: 56,
-                        cacheHeight: 56,
                       ),
                     ),
-                  );
-                },
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
       ),

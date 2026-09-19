@@ -3,13 +3,24 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'd81369cc-f282-4ed3-9328-2dd5aba91044'
-  PropagateID: 'd81369cc-f282-4ed3-9328-2dd5aba91044'
-  ReservedCode1: 'f1c31cd3-311f-4fdb-a7e2-98333101168c'
-  ReservedCode2: 'f1c31cd3-311f-4fdb-a7e2-98333101168c'
+  ProduceID: '8c2ae367-afc9-443c-86c0-c8d92dca9bea'
+  PropagateID: '8c2ae367-afc9-443c-86c0-c8d92dca9bea'
+  ReservedCode1: 'db3f8530-1328-406f-bc0f-89942d629940'
+  ReservedCode2: 'db3f8530-1328-406f-bc0f-89942d629940'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.3.2+18（2026-09-19）· 代码巡检查出 4 个 bug
+
+全量代码审查（近期多轮改动文件 + 危险模式扫描），修复 4 个真实 bug：
+
+- **新建日记"先加标签/选本再打字"会丢标签和归本**：暂存的 tags/notebookId 只在"导入媒体"时补写；若用户先加标签再输入正文，自动保存首建实体时暂存内容不会落库 → onSaved 回调补写（与 _ensureEntityId 同一套逻辑）
+- **纯心情打卡的日记被误标"图片日记"**：当天列表卡片占位文案未判断是否真有媒体 → 卡片重构进 FutureBuilder，按媒体有无显示"图片日记"/"心情打卡"
+- **首页心情取值不稳定**：同一天写多篇日记时，打卡选中态和 7 天心情点带取"列表第一篇"的心情（顺序不保证），可能出现打卡显示错误/点带颜色跳变 → 改取"最新创建且带心情的一篇"
+- **视频/实况缩略图强解包可能崩**：10 处 `coverPath!`/`thumbPath!` 强解，视频无缩略图路径时 File(null) 直接崩溃 → 详情页/编辑器/列表卡片统一加 null 守卫 + 加载失败占位框 + errorBuilder
+- 测试 49/49 全过；analyze 0 error/0 warning（11 条 info 为 const/deprecated 建议，不阻塞）
+- APK 验签 CN=Trinity
 
 ## v4.3.1+17（2026-09-19）· 三个真机 bug 热修
 

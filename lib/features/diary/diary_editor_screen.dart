@@ -85,7 +85,18 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     _controller = AutosaveController(
       repo: ref.read(diaryRepoProvider),
       draftOwnerType: _ownerType,
-      onSaved: (id) => _savedId = id,
+      // 自动保存首建实体时，补写暂存的标签/归本（与 _ensureEntityId 同一套逻辑）。
+      // 否则"先加标签再打字"的场景标签会丢。
+      onSaved: (id) async {
+        _savedId = id;
+        final repo = ref.read(diaryRepoProvider);
+        if (_tags.isNotEmpty) {
+          await repo.setTags(diaryId: id, tags: _tags);
+        }
+        if (_notebookId != null && _notebookId! > 0) {
+          await repo.setNotebook(diaryId: id, notebookId: _notebookId);
+        }
+      },
     );
     _controller.addListener(_onSaveStatus);
     _bootstrap();
@@ -931,30 +942,16 @@ class _MediaGrid extends StatelessWidget {
               children: [
                 GestureDetector(
                   // 图片/实况封面点开全屏查看；实况长按播放（与详情页一致）
-                  onTap: () => showFullscreenImage(context, m.coverPath!),
+                  onTap: (m.coverPath ?? m.thumbPath) == null
+                      ? null
+                      : () => showFullscreenImage(
+                          context, m.coverPath ?? m.thumbPath!),
                   onLongPress: m.kind == MediaKind.livePhoto
                       ? () => onPlayLive(m)
                       : null,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(AppRadii.rMd),
-                    child: m.kind == MediaKind.video && m.thumbPath != null
-                        ? Image.file(
-                            File(m.thumbPath!),
-                            width: 96,
-                            height: 96,
-                            fit: BoxFit.cover,
-                            // 性能纪律 #7：按显示尺寸解码，不把原视频帧拖进内存
-                            cacheWidth: 96,
-                            cacheHeight: 96,
-                          )
-                        : Image.file(
-                            File(m.coverPath!),
-                            width: 96,
-                            height: 96,
-                            fit: BoxFit.cover,
-                            cacheWidth: 96,
-                            cacheHeight: 96,
-                          ),
+                    child: _thumb(context, m),
                   ),
                 ),
                 if (m.kind == MediaKind.livePhoto)
@@ -995,6 +992,34 @@ class _MediaGrid extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  /// 缩略图：路径缺失/加载失败给占位框，绝不 File(null) 崩
+  Widget _thumb(BuildContext context, MediaItem m) {
+    final p = Theme.of(context).colorScheme;
+    final path = m.thumbPath ?? m.coverPath;
+    Widget fallback() => Container(
+          width: 96,
+          height: 96,
+          color: p.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: PhosphorIcon(
+            PhosphorIconsRegular.filmStrip,
+            size: 24,
+            color: p.onSurfaceVariant,
+          ),
+        );
+    if (path == null) return fallback();
+    return Image.file(
+      File(path),
+      width: 96,
+      height: 96,
+      fit: BoxFit.cover,
+      // 性能纪律 #7：按显示尺寸解码，不把原视频帧拖进内存
+      cacheWidth: 96,
+      cacheHeight: 96,
+      errorBuilder: (_, __, ___) => fallback(),
     );
   }
 }
