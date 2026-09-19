@@ -43,14 +43,8 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
     await player.play();
     if (mounted) {
       setState(() {});
-      await showModalBottomSheet<void>(
-        context: context,
-        useSafeArea: true,
-        builder: (ctx) => AspectRatio(
-          aspectRatio: player.value.aspectRatio,
-          child: VideoPlayer(player),
-        ),
-      );
+      // 全屏黑底沉浸式，点任意处关闭
+      await showFullscreenVideo(context, player);
     }
     old?.dispose();
     await player.pause();
@@ -188,47 +182,65 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                 builder: (context, mediaSnap) {
                   final items = mediaSnap.data ?? const <MediaItem>[];
                   if (items.isEmpty) return const SizedBox.shrink();
-                  return Wrap(
-                    spacing: AppSpacing.s8,
-                    runSpacing: AppSpacing.s8,
+                  final hasLive = items.any(
+                    (m) => m.kind == MediaKind.livePhoto,
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final m in items)
-                        GestureDetector(
-                          onLongPress: m.kind == MediaKind.livePhoto
-                              ? () => _play(m)
-                              : null,
-                          onTap: m.kind == MediaKind.video
-                              ? () => _play(m)
-                              : null,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(AppRadii.rMd),
-                            child: m.kind == MediaKind.video &&
-                                    m.thumbPath != null
-                                ? Image.file(
-                                    File(m.thumbPath!),
-                                    width: 110,
-                                    height: 110,
-                                    fit: BoxFit.cover,
-                                    cacheWidth: 110,
-                                    cacheHeight: 110,
-                                  )
-                                : Image.file(
-                                    File(m.coverPath!),
-                                    width: 110,
-                                    height: 110,
-                                    fit: BoxFit.cover,
-                                    cacheWidth: 110,
-                                    cacheHeight: 110,
-                                  ),
+                      Wrap(
+                        spacing: AppSpacing.s8,
+                        runSpacing: AppSpacing.s8,
+                        children: [
+                          for (final m in items)
+                            GestureDetector(
+                              onLongPress: m.kind == MediaKind.livePhoto
+                                  ? () => _play(m)
+                                  : null,
+                              onTap: m.kind == MediaKind.livePhoto
+                                  ? () => _play(m)
+                                  : (m.coverPath != null
+                                      ? () => showFullscreenImage(
+                                          context, m.coverPath!)
+                                      : null),
+                              child: ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadii.rMd),
+                                child: m.kind == MediaKind.video &&
+                                        m.thumbPath != null
+                                    ? Image.file(
+                                        File(m.thumbPath!),
+                                        width: 110,
+                                        height: 110,
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 110,
+                                        cacheHeight: 110,
+                                      )
+                                    : Image.file(
+                                        File(m.coverPath!),
+                                        width: 110,
+                                        height: 110,
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 110,
+                                        cacheHeight: 110,
+                                      ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (hasLive)
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.s8),
+                          child: Text(
+                            '实况照片点按/长按播放，图片点开可双指缩放',
+                            style: AppType.caption.copyWith(
+                              color: p.onSurfaceVariant,
+                            ),
                           ),
                         ),
                     ],
                   );
                 },
-              ),
-              Text(
-                '实况照片长按播放',
-                style: AppType.caption.copyWith(color: p.onSurfaceVariant),
               ),
             ],
           );

@@ -344,7 +344,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     if (mounted) setState(() {});
   }
 
-  // ---- 实况照片播放（长按直接播自己的 mp4）----
+  // ---- 实况照片播放（全屏黑底，点任意处关闭）----
   Future<void> _playLivePhoto(MediaItem item) async {
     final old = _previewPlayer;
     final player = VideoPlayerController.file(File(item.videoPath!));
@@ -354,14 +354,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     await player.play();
     if (mounted) {
       setState(() {});
-      await showModalBottomSheet<void>(
-        context: context,
-        useSafeArea: true,
-        builder: (ctx) => AspectRatio(
-          aspectRatio: player.value.aspectRatio,
-          child: VideoPlayer(player),
-        ),
-      );
+      await showFullscreenVideo(context, player);
     }
     old?.dispose();
     await player.pause();
@@ -776,26 +769,33 @@ class _MediaGrid extends StatelessWidget {
           for (final m in items)
             Stack(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadii.rMd),
-                  child: m.kind == MediaKind.video && m.thumbPath != null
-                      ? Image.file(
-                          File(m.thumbPath!),
-                          width: 96,
-                          height: 96,
-                          fit: BoxFit.cover,
-                          // 性能纪律 #7：按显示尺寸解码，不把原视频帧拖进内存
-                          cacheWidth: 96,
-                          cacheHeight: 96,
-                        )
-                      : Image.file(
-                          File(m.coverPath!),
-                          width: 96,
-                          height: 96,
-                          fit: BoxFit.cover,
-                          cacheWidth: 96,
-                          cacheHeight: 96,
-                        ),
+                GestureDetector(
+                  // 图片/实况封面点开全屏查看；实况长按播放（与详情页一致）
+                  onTap: () => showFullscreenImage(context, m.coverPath!),
+                  onLongPress: m.kind == MediaKind.livePhoto
+                      ? () => onPlayLive(m)
+                      : null,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadii.rMd),
+                    child: m.kind == MediaKind.video && m.thumbPath != null
+                        ? Image.file(
+                            File(m.thumbPath!),
+                            width: 96,
+                            height: 96,
+                            fit: BoxFit.cover,
+                            // 性能纪律 #7：按显示尺寸解码，不把原视频帧拖进内存
+                            cacheWidth: 96,
+                            cacheHeight: 96,
+                          )
+                        : Image.file(
+                            File(m.coverPath!),
+                            width: 96,
+                            height: 96,
+                            fit: BoxFit.cover,
+                            cacheWidth: 96,
+                            cacheHeight: 96,
+                          ),
+                  ),
                 ),
                 if (m.kind == MediaKind.livePhoto)
                   Positioned(

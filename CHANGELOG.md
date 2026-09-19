@@ -3,13 +3,21 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '82b21085-177b-4ea5-be24-85bccc20deb5'
-  PropagateID: '82b21085-177b-4ea5-be24-85bccc20deb5'
-  ReservedCode1: 'bc254d8c-ac39-44cc-9b3d-3365336c4be4'
-  ReservedCode2: 'bc254d8c-ac39-44cc-9b3d-3365336c4be4'
+  ProduceID: '4fa8382e-098c-421a-afc0-b96f5d8d9340'
+  PropagateID: '4fa8382e-098c-421a-afc0-b96f5d8d9340'
+  ReservedCode1: '28fd79db-0e51-42f9-a7f6-6d78ff945860'
+  ReservedCode2: '28fd79db-0e51-42f9-a7f6-6d78ff945860'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.2.1+15（2026-09-19）· 实况照片预览热修
+
+- **预览留白修复**：实况照片/视频预览从底部弹窗（上方留白近 1/3 屏、两侧灰色）改为**全屏黑底沉浸式**（Dialog.fullscreen，竖屏撑满高/横屏撑满宽，点任意处关闭），详情页与编辑器共用 showFullscreenVideo/showFullscreenImage
+- **普通图片可点开全屏查看**：详情页与编辑器的图片缩略图新增 tap → 全屏查看（InteractiveViewer 双指缩放 4x）
+- **提示文案条件化**：详情页底部"实况照片长按播放"原为常驻（无论有无媒体都显示），改为仅有实况照片时显示，文案更新为"实况照片点按/长按播放，图片点开可双指缩放"
+- 实况照片点按/长按均可播放（原仅长按）
+- 测试 48/48 全过；analyze 0 error/0 warning；APK 验签 CN=Trinity
 
 ## v4.2.0+14（2026-09-19）· 真机体验反馈全量改造
 

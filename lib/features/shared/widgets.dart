@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../design/motion.dart';
 import '../../design/tokens.dart';
@@ -439,6 +442,55 @@ class MoodDot extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 全屏黑底查看图片：可双指缩放，点任意处关闭。
+/// （替代底部弹窗预览——后者上方留白近三分之一屏，看图体验差）
+Future<void> showFullscreenImage(BuildContext context, String path) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black,
+    barrierDismissible: true,
+    useSafeArea: false,
+    builder: (ctx) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: InteractiveViewer(
+          maxScale: 4,
+          child: Center(
+            child: Image.file(File(path), fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 全屏黑底播放视频（实况照片用）：点击关闭，controller 生命周期由调用方管。
+/// Center + AspectRatio：竖屏视频撑满高、横屏撑满宽，不再有弹窗留白。
+Future<void> showFullscreenVideo(
+  BuildContext context,
+  VideoPlayerController player,
+) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black,
+    barrierDismissible: true,
+    useSafeArea: false,
+    builder: (ctx) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: player.value.aspectRatio,
+            child: VideoPlayer(player),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// 统一确认弹窗（底部弹窗形态，跟手拖拽关闭）
