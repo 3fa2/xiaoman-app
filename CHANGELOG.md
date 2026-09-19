@@ -3,13 +3,22 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '05e85832-7c22-4629-b50c-7b5874635ca4'
-  PropagateID: '05e85832-7c22-4629-b50c-7b5874635ca4'
-  ReservedCode1: 'd2606d35-3676-4b14-9e63-47c0ec05c178'
-  ReservedCode2: 'd2606d35-3676-4b14-9e63-47c0ec05c178'
+  ProduceID: 'aacf0c39-1c0e-4854-aed4-fe0d544de9b1'
+  PropagateID: 'aacf0c39-1c0e-4854-aed4-fe0d544de9b1'
+  ReservedCode1: '909dc7ca-2b1f-4863-99b5-96ddd9cc1a48'
+  ReservedCode2: '909dc7ca-2b1f-4863-99b5-96ddd9cc1a48'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.1.0+13（2026-09-19）· 真机反馈热修
+
+用户真机反馈两项修复：
+
+- **日记日历星期标签被裁切**：`diary_calendar_screen.dart` 的 TableCalendar 未传 `daysOfWeekHeight`，默认 16.0 装不下中文"周X"两字标签导致垂直裁切 → 加高至 30
+- **生物识别不可用**：`MainActivity.kt` 继承 `FlutterActivity`，而 local_auth 的 Android 实现要求宿主为 `FlutterFragmentActivity`（否则抛 no_fragment_activity 且异常被锁屏 UI 静默吞掉）→ 改继承 `FlutterFragmentActivity`
+- 版本号规则生效：pubspec.yaml 与 android/local.properties 同步递增（4.1.0+13）
+- 测试 47/47 全过；APK 验签 CN=Trinity；交付副本 `E:\DeepSeek\apk\三位一体-v4.1.0.apk`
 
 ## v4.0.0+12（2026-09-19）
 

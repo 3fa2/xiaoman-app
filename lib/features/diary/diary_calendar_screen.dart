@@ -86,11 +86,13 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
                       focusedDay: _focused,
                       selectedDayPredicate: (d) => _dayOf(d) == _selectedDay,
                       onPageChanged: (f) => setState(() => _focused = f),
-                      onDaySelected: (selected, focused) => setState(() {
-                        _selectedDay = _dayOf(selected);
-                        _focused = focused;
-                      }),
-                      headerStyle: HeaderStyle(
+                       onDaySelected: (selected, focused) => setState(() {
+                         _selectedDay = _dayOf(selected);
+                         _focused = focused;
+                       }),
+                       // 中文星期标签（“周一”式两字）默认 16.0 高度装不下会垂直裁切，加高到 30。
+                       daysOfWeekHeight: 30,
+                       headerStyle: HeaderStyle(
                         formatButtonVisible: false,
                         titleCentered: true,
                         titleTextStyle:
