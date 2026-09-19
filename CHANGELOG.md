@@ -3,13 +3,20 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'b09f6c51-39a0-48fb-ad00-035ccdbf68b0'
-  PropagateID: 'b09f6c51-39a0-48fb-ad00-035ccdbf68b0'
-  ReservedCode1: '766e6dc9-8f90-4ab0-b08a-d9fb49b67d80'
-  ReservedCode2: '766e6dc9-8f90-4ab0-b08a-d9fb49b67d80'
+  ProduceID: 'd81369cc-f282-4ed3-9328-2dd5aba91044'
+  PropagateID: 'd81369cc-f282-4ed3-9328-2dd5aba91044'
+  ReservedCode1: 'f1c31cd3-311f-4fdb-a7e2-98333101168c'
+  ReservedCode2: 'f1c31cd3-311f-4fdb-a7e2-98333101168c'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.3.1+17（2026-09-19）· 三个真机 bug 热修
+
+- **编辑器标题被裁切**：标题输入框用浮动 label（theme 全局 FloatingLabelBehavior.always），长文案"标题（可不填，留空显示日期）"被输入框上边缘裁切只露下半截 → 改 hint 常驻 + never，输入后消失
+- **实况照片点击没反应**：_play/_playLivePhoto 无容错，videoPath 为 null 或文件失效时 `File(path!)` 抛异常被吞 → 增加存在性检查 + try-catch，视频缺失/初始化失败回退全屏图片（点击必有反馈）；视频类型播放入口补回（v4.2.1 改造时误丢）；详情页实况照片加"实况"角标
+- **当天列表纯图片日记空白**：卡片只渲染标题/正文/标签，纯图片日记无文字可显 → 卡片右侧加媒体缩略图（第一张 56px，视频用 thumb），无标题无正文时显示"图片日记"占位
+- 测试 49/49 全过；analyze 0 error/0 warning；APK 验签 CN=Trinity
 
 ## v4.3.0+16（2026-09-19）· "大改"四项需求
 

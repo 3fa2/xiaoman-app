@@ -364,12 +364,24 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     if (mounted) setState(() {});
   }
 
-  // ---- 实况照片播放（全屏黑底，点任意处关闭）----
+  // ---- 实况照片播放（全屏黑底，点任意处关闭；视频缺失回退图片）----
   Future<void> _playLivePhoto(MediaItem item) async {
+    final videoPath = item.videoPath;
+    if (videoPath == null || !File(videoPath).existsSync()) {
+      await showFullscreenImage(context, item.coverPath!);
+      return;
+    }
     final old = _previewPlayer;
-    final player = VideoPlayerController.file(File(item.videoPath!));
+    final player = VideoPlayerController.file(File(videoPath));
     _previewPlayer = player;
-    await player.initialize();
+    try {
+      await player.initialize();
+    } catch (_) {
+      old?.dispose();
+      _previewPlayer = null;
+      if (mounted) await showFullscreenImage(context, item.coverPath!);
+      return;
+    }
     await player.setLooping(true);
     await player.play();
     if (mounted) {
@@ -447,8 +459,11 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                         TextField(
                           controller: _title,
                           style: AppType.title.copyWith(color: p.onSurface),
+                          // 不用浮动 label（theme 全局 always 会被长文案裁切），
+                          // 改 hint：输入后消失，语义不变
                           decoration: const InputDecoration(
-                            labelText: '标题（可不填，留空显示日期）',
+                            hintText: '标题（可不填，留空显示日期）',
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
                             filled: false,
                             fillColor: Colors.transparent,
                             border: InputBorder.none,

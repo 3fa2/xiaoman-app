@@ -34,11 +34,28 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
     super.dispose();
   }
 
+  /// 播放视频/实况。视频文件缺失或初始化失败时回退全屏图片，点击必有反馈。
   Future<void> _play(MediaItem item) async {
+    final videoPath = item.videoPath;
+    if (videoPath == null || !File(videoPath).existsSync()) {
+      if (item.coverPath != null) {
+        await showFullscreenImage(context, item.coverPath!);
+      }
+      return;
+    }
     final old = _player;
-    final player = VideoPlayerController.file(File(item.videoPath!));
+    final player = VideoPlayerController.file(File(videoPath));
     _player = player;
-    await player.initialize();
+    try {
+      await player.initialize();
+    } catch (_) {
+      old?.dispose();
+      _player = null;
+      if (item.coverPath != null && mounted) {
+        await showFullscreenImage(context, item.coverPath!);
+      }
+      return;
+    }
     await player.setLooping(true);
     await player.play();
     if (mounted) {
@@ -205,36 +222,64 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                         children: [
                           for (final m in items)
                             GestureDetector(
-                              onLongPress: m.kind == MediaKind.livePhoto
-                                  ? () => _play(m)
-                                  : null,
-                              onTap: m.kind == MediaKind.livePhoto
-                                  ? () => _play(m)
-                                  : (m.coverPath != null
+                              // 实况/视频都能点按或长按播放；普通图片全屏看
+                              onTap: m.kind == MediaKind.image
+                                  ? (m.coverPath != null
                                       ? () => showFullscreenImage(
                                           context, m.coverPath!)
-                                      : null),
-                              child: ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(AppRadii.rMd),
-                                child: m.kind == MediaKind.video &&
-                                        m.thumbPath != null
-                                    ? Image.file(
-                                        File(m.thumbPath!),
-                                        width: 110,
-                                        height: 110,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 110,
-                                        cacheHeight: 110,
-                                      )
-                                    : Image.file(
-                                        File(m.coverPath!),
-                                        width: 110,
-                                        height: 110,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 110,
-                                        cacheHeight: 110,
+                                      : null)
+                                  : () => _play(m),
+                              onLongPress: m.kind == MediaKind.image
+                                  ? null
+                                  : () => _play(m),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadii.rMd),
+                                    child: m.kind == MediaKind.video &&
+                                            m.thumbPath != null
+                                        ? Image.file(
+                                            File(m.thumbPath!),
+                                            width: 110,
+                                            height: 110,
+                                            fit: BoxFit.cover,
+                                            cacheWidth: 110,
+                                            cacheHeight: 110,
+                                          )
+                                        : Image.file(
+                                            File(m.coverPath!),
+                                            width: 110,
+                                            height: 110,
+                                            fit: BoxFit.cover,
+                                            cacheWidth: 110,
+                                            cacheHeight: 110,
+                                          ),
+                                  ),
+                                  if (m.kind == MediaKind.livePhoto)
+                                    Positioned(
+                                      right: AppSpacing.s4,
+                                      bottom: AppSpacing.s4,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: AppSpacing.s4,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: BorderRadius.circular(
+                                            AppRadii.rSm,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '实况',
+                                          style: AppType.caption.copyWith(
+                                            color: Colors.white,
+                                          ),
+                                        ),
                                       ),
+                                    ),
+                                ],
                               ),
                             ),
                         ],
