@@ -38,6 +38,7 @@ abstract interface class DiaryRepository implements EditorRepository {
   Stream<List<Diary>> watchByMonth(int yearMonth); // yyyymm
   Future<Diary?> getById(int id);
   Future<void> setMood({required int diaryId, required int? moodId});
+  Future<void> setTags({required int diaryId, required List<String> tags});
   Future<void> delete(int id);
   Future<List<Diary>> search(String query); // FTS5，<3 字回退 LIKE
   Stream<List<Mood>> watchMoods();

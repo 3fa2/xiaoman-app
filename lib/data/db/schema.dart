@@ -16,6 +16,7 @@ class Diaries extends Table {
   IntColumn get dateDay => integer()(); // yyyymmdd
   TextColumn get title => text().withDefault(const Constant(''))();
   TextColumn get content => text().withDefault(const Constant(''))();
+  TextColumn get tags => text().withDefault(const Constant(''))(); // csv（v4.2 新增）
   IntColumn get moodId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();

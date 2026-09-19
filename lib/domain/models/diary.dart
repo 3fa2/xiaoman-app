@@ -4,6 +4,7 @@ class Diary {
   final int dateDay; // yyyymmdd
   final String title;
   final String content;
+  final List<String> tags; // 标签（csv 存储，域层转 List）
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -13,6 +14,7 @@ class Diary {
     required this.dateDay,
     required this.title,
     required this.content,
+    this.tags = const [],
     required this.moodId,
     required this.createdAt,
     required this.updatedAt,

@@ -27,7 +27,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -39,6 +39,12 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await _createFts();
           await _seedMoods();
+        },
+        onUpgrade: (m, from, to) async {
+          // v1 → v2：日记加标签列（csv），保留已有数据
+          if (from < 2) {
+            await m.addColumn(diaries, diaries.tags);
+          }
         },
       );
 
@@ -113,9 +119,9 @@ class AppDatabase extends _$AppDatabase {
     }
     final like = '%$q%';
     final rows = await customSelect(
-      'SELECT * FROM diaries WHERE content LIKE ? OR title LIKE ? '
+      'SELECT * FROM diaries WHERE content LIKE ? OR title LIKE ? OR tags LIKE ? '
       'ORDER BY date_day DESC',
-      variables: [Variable(like), Variable(like)],
+      variables: [Variable(like), Variable(like), Variable(like)],
       readsFrom: {diaries},
     ).map(_rowToDiary).get();
     return rows;
@@ -152,6 +158,7 @@ class AppDatabase extends _$AppDatabase {
         dateDay: r.read<int>('date_day'),
         title: r.read<String>('title'),
         content: r.read<String>('content'),
+        tags: r.read<String>('tags'),
         moodId: r.readNullable<int>('mood_id'),
         createdAt: r.read<DateTime>('created_at'),
         updatedAt: r.read<DateTime>('updated_at'),

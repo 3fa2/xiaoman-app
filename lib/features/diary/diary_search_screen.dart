@@ -19,11 +19,13 @@ class DiarySearchScreen extends ConsumerStatefulWidget {
 class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
   String _query = '';
   int? _moodFilter;
+  String? _tagFilter;
 
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    void setTag(String? t) => setState(() => _tagFilter = t);
 
     return Scaffold(
       appBar: AppBar(
@@ -87,8 +89,16 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
           ),
           Expanded(
             child: _query.isEmpty
-                ? _AllDiaries(moodFilter: _moodFilter)
-                : _SearchResults(query: _query, moodFilter: _moodFilter),
+                ? _AllDiaries(
+                    moodFilter: _moodFilter,
+                    tagFilter: _tagFilter,
+                    onTagFilter: setTag,
+                  )
+                : _SearchResults(
+                    query: _query,
+                    moodFilter: _moodFilter,
+                    tagFilter: _tagFilter,
+                  ),
           ),
         ],
       ),
@@ -137,37 +147,85 @@ class _DiaryTile extends StatelessWidget {
 }
 
 class _AllDiaries extends ConsumerWidget {
-  const _AllDiaries({required this.moodFilter});
+  const _AllDiaries({
+    required this.moodFilter,
+    this.tagFilter,
+    this.onTagFilter,
+  });
 
   final int? moodFilter;
+  final String? tagFilter;
+  final ValueChanged<String?>? onTagFilter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return StreamBuilder<List<Diary>>(
       stream: ref.watch(diaryRepoProvider).watchAll(),
       builder: (context, snap) {
-        final list = (snap.data ?? const <Diary>[])
-            .where((d) => moodFilter == null || d.moodId == moodFilter)
-            .toList();
-        if (list.isEmpty) {
-          return const EmptyState(
-            icon: PhosphorIconsRegular.magnifyingGlass,
-            title: '没有匹配的日记',
-            hint: '换个心情筛一筛，或换个关键词',
-          );
+        final all = snap.data ?? const <Diary>[];
+        // 从全部日记里提取已用标签，供过滤
+        final usedTags = <String>{};
+        for (final d in all) {
+          usedTags.addAll(d.tags);
         }
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
-          ),
-          itemCount: list.length,
-          itemBuilder: (context, i) => StaggeredEntrance(
-            index: i,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-              child: _DiaryTile(diary: list[i]),
-            ),
-          ),
+        final tagList = usedTags.toList()..sort();
+        final list = all
+            .where(
+              (d) =>
+                  (moodFilter == null || d.moodId == moodFilter) &&
+                  (tagFilter == null || d.tags.contains(tagFilter)),
+            )
+            .toList();
+        return Column(
+          children: [
+            if (tagList.isNotEmpty)
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.page,
+                  ),
+                  children: [
+                    for (final t in tagList)
+                      Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.s8),
+                        child: FilterChip(
+                          label: Text(t),
+                          selected: tagFilter == t,
+                          onSelected: (_) =>
+                              onTagFilter?.call(tagFilter == t ? null : t),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            if (list.isEmpty)
+              Expanded(
+                child: EmptyState(
+                  icon: PhosphorIconsRegular.magnifyingGlass,
+                  title: '没有匹配的日记',
+                  hint: '换个心情或标签筛一筛',
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.page, AppSpacing.s8, AppSpacing.page,
+                    AppSpacing.listBottom,
+                  ),
+                  itemCount: list.length,
+                  itemBuilder: (context, i) => StaggeredEntrance(
+                    index: i,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.s8),
+                      child: _DiaryTile(diary: list[i]),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -175,10 +233,15 @@ class _AllDiaries extends ConsumerWidget {
 }
 
 class _SearchResults extends ConsumerStatefulWidget {
-  const _SearchResults({required this.query, required this.moodFilter});
+  const _SearchResults({
+    required this.query,
+    required this.moodFilter,
+    this.tagFilter,
+  });
 
   final String query;
   final int? moodFilter;
+  final String? tagFilter;
 
   @override
   ConsumerState<_SearchResults> createState() => _SearchResultsState();
@@ -215,7 +278,10 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
     if (_results == null) return const SkeletonList();
     final list = _results!
         .where(
-          (d) => widget.moodFilter == null || d.moodId == widget.moodFilter,
+          (d) =>
+              (widget.moodFilter == null || d.moodId == widget.moodFilter) &&
+              (widget.tagFilter == null ||
+                  d.tags.contains(widget.tagFilter)),
         )
         .toList();
     if (list.isEmpty) {

@@ -9,6 +9,67 @@ import '../../design/tokens.dart';
 /// 状态循环：每屏必须有 空态 / 加载态 / 错误态
 /// ============================================================
 
+/// 统一悬浮按钮：全 App 唯一 FAB 形态（主题已定形），
+/// 每页只换图标 + tooltip，保证「一套设计」而非「两套拼接」。
+class AppFab extends StatelessWidget {
+  const AppFab({super.key, required this.icon, required this.onPressed, required this.tooltip});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      child: PhosphorIcon(
+        icon,
+        color: Theme.of(context).colorScheme.onPrimary,
+        weight: 1.5,
+        size: 26,
+      ),
+    );
+  }
+}
+
+/// 统一区块小字动作按钮（「全部」「去日程」这类）：
+/// AppType.label + primary，比默认 TextButton 字号统一、不抢标题戏。
+class TextActionButton extends StatelessWidget {
+  const TextActionButton({super.key, required this.label, this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return PressableScale(
+      onTap: onPressed,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s4, vertical: AppSpacing.s4,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: AppType.label.copyWith(color: p.primary),
+            ),
+            const SizedBox(width: AppSpacing.s4),
+            PhosphorIcon(
+              PhosphorIconsRegular.caretRight,
+              size: 12,
+              color: p.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 按压反馈：scale 1→0.98，100ms，standard。
 /// reduceMotion 时只保留颜色变化不做 scale（交互保留，装饰降级）。
 class PressableScale extends StatefulWidget {
@@ -49,7 +110,7 @@ class _PressableScaleState extends State<PressableScale> {
   }
 }
 
-/// 空态：Phosphor 线性图标 + 一句主文案 + 一句引导 + 可选主按钮
+/// 空态：Phosphor 线性图标 + 一句主文案 + 一句引导 + 可选主按钮 + 快捷示例 chips
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -58,6 +119,7 @@ class EmptyState extends StatelessWidget {
     required this.hint,
     this.actionLabel,
     this.onAction,
+    this.examples = const [],
   });
 
   final IconData icon;
@@ -66,12 +128,15 @@ class EmptyState extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onAction;
 
+  /// 快捷示例：一键创建示例内容，降低空白页的「不知道干嘛」感。
+  final List<(String, VoidCallback)> examples;
+
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.s40),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.s24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -93,6 +158,21 @@ class EmptyState extends StatelessWidget {
               style: AppType.body.copyWith(color: p.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
+            if (examples.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.s16),
+              Wrap(
+                spacing: AppSpacing.s8,
+                runSpacing: AppSpacing.s8,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final (label, onTap) in examples)
+                    ActionChip(
+                      label: Text(label),
+                      onPressed: onTap,
+                    ),
+                ],
+              ),
+            ],
             if (actionLabel != null) ...[
               const SizedBox(height: AppSpacing.s24),
               FilledButton(onPressed: onAction, child: Text(actionLabel!)),

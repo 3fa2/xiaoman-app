@@ -65,6 +65,21 @@ void main() {
       final d = await repo.getById(id);
       expect(d!.moodId, moods.first.id);
     });
+
+    test('日记标签：setTags 落库 + 读回 csv 转 List + 按标签搜索', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(id: null, title: '旅行', content: '去海边', extra: null);
+      // 初始无标签
+      expect((await repo.getById(id))!.tags, isEmpty);
+      // 写入标签
+      await repo.setTags(diaryId: id, tags: ['旅行', '夏天']);
+      final d = await repo.getById(id);
+      expect(d!.tags, ['旅行', '夏天']);
+      // LIKE 回退能搜到标签
+      final r = await repo.search('夏天');
+      expect(r.length, 1);
+      expect(r.first.title, '旅行');
+    });
   });
 
   group('NoteRepository', () {

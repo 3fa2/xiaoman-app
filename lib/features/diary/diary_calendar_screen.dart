@@ -38,15 +38,22 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
       appBar: AppBar(
         title: const Text('日记'),
         actions: [
-          IconButton(
+          // 统计入口带文字，不再让用户猜图标是干嘛的
+          TextButton.icon(
             onPressed: () => context.openMoodTrend(),
             icon: PhosphorIcon(
               PhosphorIconsRegular.chartLineUp,
-              color: p.onSurfaceVariant,
+              size: 18,
+              color: p.primary,
+            ),
+            label: Text(
+              '心情统计',
+              style: AppType.label.copyWith(color: p.primary),
             ),
           ),
           IconButton(
             onPressed: () => context.openDiarySearch(),
+            tooltip: '搜索日记',
             icon: PhosphorIcon(
               PhosphorIconsRegular.magnifyingGlass,
               color: p.onSurfaceVariant,
@@ -54,13 +61,10 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: AppFab(
+        icon: PhosphorIconsRegular.notePencil,
+        tooltip: '写日记',
         onPressed: () => context.openDiaryEditor(),
-        child: PhosphorIcon(
-          PhosphorIconsRegular.plus,
-          color: p.onPrimary,
-          weight: 1.5,
-        ),
       ),
       body: Column(
         children: [
@@ -110,17 +114,18 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
                       ),
                       calendarStyle: CalendarStyle(
                         outsideDaysVisible: false,
+                        // 选中日高亮：primary 实底圆 + 白字，对比拉满一眼可见
                         selectedDecoration: BoxDecoration(
-                          color: p.primaryContainer,
+                          color: p.primary,
                           shape: BoxShape.circle,
                         ),
                         todayDecoration: BoxDecoration(
                           color: p.surfaceContainerHighest,
                           shape: BoxShape.circle,
+                          border: Border.all(color: p.primary, width: 1.5),
                         ),
-                        selectedTextStyle: AppType.body.copyWith(
-                          color: dark ? p.onSurface : p.primary,
-                        ),
+                        selectedTextStyle:
+                            AppType.body.copyWith(color: p.onPrimary),
                         todayTextStyle:
                             AppType.body.copyWith(color: p.onSurface),
                         defaultTextStyle:
@@ -150,26 +155,39 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
           const SizedBox(height: AppSpacing.block),
           const SectionHeader('当天'),
           Expanded(
-            child: StreamBuilder<List<Diary>>(
-              stream: dayList,
-              builder: (context, snap) {
-                final list = snap.data ?? const <Diary>[];
-                if (list.isEmpty) {
-                  return const EmptyState(
-                    icon: PhosphorIconsRegular.notebook,
-                    title: '这一天还没有日记',
-                    hint: '点右下角的加号写一篇',
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.page, 0, AppSpacing.page, AppSpacing.listBottom,
-                  ),
-                  itemCount: list.length,
-                  itemBuilder: (context, i) => Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-                    child: _DiaryCard(diary: list[i]),
-                  ),
+            child: StreamBuilder<List<Mood>>(
+              stream: moods,
+              builder: (context, moodSnap) {
+                final moodMap = {
+                  for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m,
+                };
+                return StreamBuilder<List<Diary>>(
+                  stream: dayList,
+                  builder: (context, snap) {
+                    final list = snap.data ?? const <Diary>[];
+                    if (list.isEmpty) {
+                      return const EmptyState(
+                        icon: PhosphorIconsRegular.notebook,
+                        title: '这一天还没有日记',
+                        hint: '点右下角的笔写下今天，也可以插照片、记心情',
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.page, 0, AppSpacing.page, AppSpacing.listBottom,
+                      ),
+                      itemCount: list.length,
+                      itemBuilder: (context, i) => Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.s8),
+                        child: _DiaryCard(
+                          diary: list[i],
+                          mood: list[i].moodId == null
+                              ? null
+                              : moodMap[list[i].moodId!],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -181,12 +199,14 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
 }
 
 class _DiaryCard extends StatelessWidget {
-  const _DiaryCard({required this.diary});
+  const _DiaryCard({required this.diary, this.mood});
 
   final Diary diary;
+  final Mood? mood;
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
     return Card(
       child: InkWell(
@@ -197,11 +217,24 @@ class _DiaryCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                diary.title.isEmpty ? diary.summary : diary.title,
-                style: AppType.headline.copyWith(color: p.onSurface),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      diary.title.isEmpty ? diary.summary : diary.title,
+                      style: AppType.headline.copyWith(color: p.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (mood != null) ...[
+                    const SizedBox(width: AppSpacing.s8),
+                    MoodDot(
+                      color: MoodPalette.colorOf(mood!.hue, dark: dark),
+                      label: mood!.name,
+                    ),
+                  ],
+                ],
               ),
               if (diary.summary.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.s4),
@@ -210,6 +243,30 @@ class _DiaryCard extends StatelessWidget {
                   style: AppType.body.copyWith(color: p.onSurfaceVariant),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (diary.tags.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.s8),
+                Wrap(
+                  spacing: AppSpacing.s4,
+                  children: [
+                    for (final t in diary.tags)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.s8, vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(AppRadii.rSm),
+                        ),
+                        child: Text(
+                          t,
+                          style: AppType.caption.copyWith(
+                            color: p.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],

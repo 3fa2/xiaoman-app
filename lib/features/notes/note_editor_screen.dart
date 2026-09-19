@@ -32,6 +32,31 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
   int? _notebookId;
   bool _ready = false;
   bool _showTodos = false;
+  int? _savedId;
+
+  /// 当前笔记实体 id（编辑已有固定；新建首存后回填）
+  int? get _noteEntityId => widget.noteId ?? _savedId;
+
+  /// 新建笔记时输入待办先确保实体存在（复用日记编辑器模式）
+  Future<int> _ensureNoteId() async {
+    final existing = _noteEntityId;
+    if (existing != null) return existing;
+    final repo = ref.read(noteRepoProvider);
+    final id = await repo.save(
+      id: null,
+      title: _title.text,
+      content: _content.text,
+      extra: _notebookId,
+    );
+    _controller.loadBaseline(
+      entityId: id,
+      title: _title.text,
+      content: _content.text,
+      extra: _notebookId,
+    );
+    _savedId = id;
+    return id;
+  }
 
   late final AutosaveController _controller;
 
@@ -102,12 +127,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
   }
 
   int? _controllerEntityId() {
-    // controller._entityId 是私有的；通过 status/saved 判断：
-    // 新建笔记在第一次自动保存后才有 id —— 由 onSaved 回调回填
     return _savedId;
   }
-
-  int? _savedId;
 
   @override
   void dispose() {
@@ -287,11 +308,19 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
                     ),
                   ),
                   _TodoSection(
-                    noteId: widget.noteId,
+                    noteId: _noteEntityId,
                     show: _showTodos,
                     onToggleShow: () =>
                         setState(() => _showTodos = !_showTodos),
                     todoCtrl: _todoCtrl,
+                    onAddFirst: (text) async {
+                      // 新建笔记：第一条待办先确保实体落库，再写入
+                      final id = await _ensureNoteId();
+                      await ref
+                          .read(noteRepoProvider)
+                          .addTodo(noteId: id, text: text);
+                      if (mounted) setState(() {});
+                    },
                   ),
                 ],
               ),
@@ -306,6 +335,7 @@ class _TodoSection extends ConsumerWidget {
     required this.show,
     required this.onToggleShow,
     required this.todoCtrl,
+    this.onAddFirst,
   });
 
   final int? noteId;
@@ -313,11 +343,14 @@ class _TodoSection extends ConsumerWidget {
   final VoidCallback onToggleShow;
   final TextEditingController todoCtrl;
 
+  /// 新建笔记（实体未落库）时输入第一条待办的回调：先建实体再写入
+  final Future<void> Function(String text)? onAddFirst;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = Theme.of(context).colorScheme;
     final repo = ref.watch(noteRepoProvider);
-    if (noteId == null) return const SizedBox.shrink();
+    // 新建笔记也展示入口：待办输入会先确保实体落库（见 onSubmitted）
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -332,70 +365,79 @@ class _TodoSection extends ConsumerWidget {
             color: p.onSurfaceVariant,
           ),
           label: Text(
-            show ? '收起清单' : '展开清单',
+            show ? '收起清单' : '待办清单（可打勾）',
             style: AppType.label.copyWith(color: p.onSurfaceVariant),
           ),
         ),
         if (show)
-          StreamBuilder<List<TodoItem>>(
-            stream: repo.watchTodos(noteId!),
-            builder: (context, snap) {
-              final todos = snap.data ?? const <TodoItem>[];
-              return Column(
-                children: [
-                  for (final t in todos)
-                    Row(
+          Column(
+            children: [
+              if (noteId != null)
+                StreamBuilder<List<TodoItem>>(
+                  stream: repo.watchTodos(noteId!),
+                  builder: (context, snap) {
+                    final todos = snap.data ?? const <TodoItem>[];
+                    return Column(
                       children: [
-                        Checkbox(
-                          value: t.done,
-                          onChanged: (v) => repo.toggleTodo(
-                            todoId: t.id, done: v ?? false,
+                        for (final t in todos)
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: t.done,
+                                onChanged: (v) => repo.toggleTodo(
+                                  todoId: t.id, done: v ?? false,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  t.text,
+                                  style: AppType.body.copyWith(
+                                    color: t.done
+                                        ? p.onSurfaceVariant
+                                        : p.onSurface,
+                                    decoration: t.done
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => repo.deleteTodo(t.id),
+                                icon: PhosphorIcon(
+                                  PhosphorIconsRegular.x,
+                                  size: 16,
+                                  color: p.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            t.text,
-                            style: AppType.body.copyWith(
-                              color: t.done
-                                  ? p.onSurfaceVariant
-                                  : p.onSurface,
-                              decoration: t.done
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => repo.deleteTodo(t.id),
-                          icon: PhosphorIcon(
-                            PhosphorIconsRegular.x,
-                            size: 16,
-                            color: p.onSurfaceVariant,
-                          ),
-                        ),
                       ],
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-                    child: TextField(
-                      controller: todoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '添加子任务',
-                      ),
-                      style: AppType.body.copyWith(color: p.onSurface),
-                      onSubmitted: (v) {
-                        if (v.trim().isNotEmpty) {
-                          repo.addTodo(noteId: noteId!, text: v.trim());
-                          todoCtrl.clear();
-                        }
-                      },
-                    ),
+                    );
+                  },
+                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.s8),
+                child: TextField(
+                  controller: todoCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '添加待办，回车确认',
                   ),
-                ],
-              );
-            },
+                  style: AppType.body.copyWith(color: p.onSurface),
+                  onSubmitted: (v) {
+                    if (v.trim().isEmpty) return;
+                    if (noteId != null) {
+                      repo.addTodo(noteId: noteId!, text: v.trim());
+                    } else {
+                      onAddFirst?.call(v.trim());
+                    }
+                    todoCtrl.clear();
+                  },
+                ),
+              ),
+            ],
           ),
       ],
     );
   }
 }
+

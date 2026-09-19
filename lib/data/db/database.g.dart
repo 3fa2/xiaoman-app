@@ -38,6 +38,13 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
+  @override
+  late final GeneratedColumn<String> tags = GeneratedColumn<String>(
+      'tags', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   static const VerificationMeta _moodIdMeta = const VerificationMeta('moodId');
   @override
   late final GeneratedColumn<int> moodId = GeneratedColumn<int>(
@@ -57,7 +64,7 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, dateDay, title, content, moodId, createdAt, updatedAt];
+      [id, dateDay, title, content, tags, moodId, createdAt, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -84,6 +91,10 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
     if (data.containsKey('content')) {
       context.handle(_contentMeta,
           content.isAcceptableOrUnknown(data['content']!, _contentMeta));
+    }
+    if (data.containsKey('tags')) {
+      context.handle(
+          _tagsMeta, tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta));
     }
     if (data.containsKey('mood_id')) {
       context.handle(_moodIdMeta,
@@ -118,6 +129,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
       content: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
+      tags: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}tags'])!,
       moodId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}mood_id']),
       createdAt: attachedDatabase.typeMapping
@@ -138,6 +151,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   final int dateDay;
   final String title;
   final String content;
+  final String tags;
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -146,6 +160,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       required this.dateDay,
       required this.title,
       required this.content,
+      required this.tags,
       this.moodId,
       required this.createdAt,
       required this.updatedAt});
@@ -156,6 +171,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
     map['date_day'] = Variable<int>(dateDay);
     map['title'] = Variable<String>(title);
     map['content'] = Variable<String>(content);
+    map['tags'] = Variable<String>(tags);
     if (!nullToAbsent || moodId != null) {
       map['mood_id'] = Variable<int>(moodId);
     }
@@ -170,6 +186,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       dateDay: Value(dateDay),
       title: Value(title),
       content: Value(content),
+      tags: Value(tags),
       moodId:
           moodId == null && nullToAbsent ? const Value.absent() : Value(moodId),
       createdAt: Value(createdAt),
@@ -185,6 +202,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       dateDay: serializer.fromJson<int>(json['dateDay']),
       title: serializer.fromJson<String>(json['title']),
       content: serializer.fromJson<String>(json['content']),
+      tags: serializer.fromJson<String>(json['tags']),
       moodId: serializer.fromJson<int?>(json['moodId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -198,6 +216,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       'dateDay': serializer.toJson<int>(dateDay),
       'title': serializer.toJson<String>(title),
       'content': serializer.toJson<String>(content),
+      'tags': serializer.toJson<String>(tags),
       'moodId': serializer.toJson<int?>(moodId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -209,6 +228,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           int? dateDay,
           String? title,
           String? content,
+          String? tags,
           Value<int?> moodId = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt}) =>
@@ -217,6 +237,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
         dateDay: dateDay ?? this.dateDay,
         title: title ?? this.title,
         content: content ?? this.content,
+        tags: tags ?? this.tags,
         moodId: moodId.present ? moodId.value : this.moodId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -227,6 +248,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       dateDay: data.dateDay.present ? data.dateDay.value : this.dateDay,
       title: data.title.present ? data.title.value : this.title,
       content: data.content.present ? data.content.value : this.content,
+      tags: data.tags.present ? data.tags.value : this.tags,
       moodId: data.moodId.present ? data.moodId.value : this.moodId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -240,6 +262,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           ..write('dateDay: $dateDay, ')
           ..write('title: $title, ')
           ..write('content: $content, ')
+          ..write('tags: $tags, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -248,8 +271,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, dateDay, title, content, moodId, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+      id, dateDay, title, content, tags, moodId, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -258,6 +281,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           other.dateDay == this.dateDay &&
           other.title == this.title &&
           other.content == this.content &&
+          other.tags == this.tags &&
           other.moodId == this.moodId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -268,6 +292,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
   final Value<int> dateDay;
   final Value<String> title;
   final Value<String> content;
+  final Value<String> tags;
   final Value<int?> moodId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -276,6 +301,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.dateDay = const Value.absent(),
     this.title = const Value.absent(),
     this.content = const Value.absent(),
+    this.tags = const Value.absent(),
     this.moodId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -285,6 +311,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     required int dateDay,
     this.title = const Value.absent(),
     this.content = const Value.absent(),
+    this.tags = const Value.absent(),
     this.moodId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -296,6 +323,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     Expression<int>? dateDay,
     Expression<String>? title,
     Expression<String>? content,
+    Expression<String>? tags,
     Expression<int>? moodId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -305,6 +333,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       if (dateDay != null) 'date_day': dateDay,
       if (title != null) 'title': title,
       if (content != null) 'content': content,
+      if (tags != null) 'tags': tags,
       if (moodId != null) 'mood_id': moodId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -316,6 +345,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       Value<int>? dateDay,
       Value<String>? title,
       Value<String>? content,
+      Value<String>? tags,
       Value<int?>? moodId,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
@@ -324,6 +354,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       dateDay: dateDay ?? this.dateDay,
       title: title ?? this.title,
       content: content ?? this.content,
+      tags: tags ?? this.tags,
       moodId: moodId ?? this.moodId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -345,6 +376,9 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     if (content.present) {
       map['content'] = Variable<String>(content.value);
     }
+    if (tags.present) {
+      map['tags'] = Variable<String>(tags.value);
+    }
     if (moodId.present) {
       map['mood_id'] = Variable<int>(moodId.value);
     }
@@ -364,6 +398,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
           ..write('dateDay: $dateDay, ')
           ..write('title: $title, ')
           ..write('content: $content, ')
+          ..write('tags: $tags, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -4052,6 +4087,7 @@ typedef $$DiariesTableCreateCompanionBuilder = DiariesCompanion Function({
   required int dateDay,
   Value<String> title,
   Value<String> content,
+  Value<String> tags,
   Value<int?> moodId,
   required DateTime createdAt,
   required DateTime updatedAt,
@@ -4061,6 +4097,7 @@ typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<int> dateDay,
   Value<String> title,
   Value<String> content,
+  Value<String> tags,
   Value<int?> moodId,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -4086,6 +4123,9 @@ class $$DiariesTableFilterComposer
 
   ColumnFilters<String> get content => $composableBuilder(
       column: $table.content, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get tags => $composableBuilder(
+      column: $table.tags, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get moodId => $composableBuilder(
       column: $table.moodId, builder: (column) => ColumnFilters(column));
@@ -4118,6 +4158,9 @@ class $$DiariesTableOrderingComposer
   ColumnOrderings<String> get content => $composableBuilder(
       column: $table.content, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get tags => $composableBuilder(
+      column: $table.tags, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get moodId => $composableBuilder(
       column: $table.moodId, builder: (column) => ColumnOrderings(column));
 
@@ -4148,6 +4191,9 @@ class $$DiariesTableAnnotationComposer
 
   GeneratedColumn<String> get content =>
       $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get tags =>
+      $composableBuilder(column: $table.tags, builder: (column) => column);
 
   GeneratedColumn<int> get moodId =>
       $composableBuilder(column: $table.moodId, builder: (column) => column);
@@ -4186,6 +4232,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<int> dateDay = const Value.absent(),
             Value<String> title = const Value.absent(),
             Value<String> content = const Value.absent(),
+            Value<String> tags = const Value.absent(),
             Value<int?> moodId = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -4195,6 +4242,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             dateDay: dateDay,
             title: title,
             content: content,
+            tags: tags,
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -4204,6 +4252,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             required int dateDay,
             Value<String> title = const Value.absent(),
             Value<String> content = const Value.absent(),
+            Value<String> tags = const Value.absent(),
             Value<int?> moodId = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
@@ -4213,6 +4262,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             dateDay: dateDay,
             title: title,
             content: content,
+            tags: tags,
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,

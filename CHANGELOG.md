@@ -3,13 +3,46 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'aacf0c39-1c0e-4854-aed4-fe0d544de9b1'
-  PropagateID: 'aacf0c39-1c0e-4854-aed4-fe0d544de9b1'
-  ReservedCode1: '909dc7ca-2b1f-4863-99b5-96ddd9cc1a48'
-  ReservedCode2: '909dc7ca-2b1f-4863-99b5-96ddd9cc1a48'
+  ProduceID: '82b21085-177b-4ea5-be24-85bccc20deb5'
+  PropagateID: '82b21085-177b-4ea5-be24-85bccc20deb5'
+  ReservedCode1: 'bc254d8c-ac39-44cc-9b3d-3365336c4be4'
+  ReservedCode2: 'bc254d8c-ac39-44cc-9b3d-3365336c4be4'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.2.0+14（2026-09-19）· 真机体验反馈全量改造
+
+**产品定位决策**：主打「日记 + 心情」（做细做深），备忘/日程做辅助（够用即停）。
+依据：v4 的 P0-1 是日记编辑器，实况照片/心情体系均为日记服务，App 命名以日记居首。
+
+### 一、快速见效（样式与反馈）
+
+- **FAB 按页区分**：日记页 ✍️notePencil / 备忘页 📁folderPlus / 笔记列表 ✏️pencilSimple / 日程页 📅calendarPlus，全部走统一 AppFab 组件（weight 1.5 + tooltip），一套设计不再"两套拼接"
+- **日历选中高亮**：primary 实底圆 + 白字（原 primaryContainer 太浅看不出选中），今天加主色描边圈
+- **心情打卡选中**：选中 chip 心情色描边 + 加粗 + ✓ 图标，打卡结果一眼可见
+- **小字按钮统一**：新增 TextActionButton（AppType.label + primary + ›箭头），"全部/去日程"不再忽大忽小
+- **空态引导**：EmptyState 支持快捷示例 chips——备忘空页一键建「灵感/待办/读书笔记」笔记本，日程空页一键加「晚上复盘/午休」时间块
+
+### 二、核心体验
+
+- **首页总览**：加「今日日程」区块头（完整列出今日剩余，不再只 3 条）+ **近 7 天心情点带**（有记录填色、没记录空心、今天主色描边）+ 最近日记带心情点
+- **日记标签（新功能）**：schema v2 加 tags 列（csv，onUpgrade addColumn 保留旧数据）→ 编辑器标签 chips（+底部弹窗添加，实体未建时暂存首存后补写）→ 详情页显示 → 搜索页标签 FilterChip 过滤 → LIKE 搜索覆盖标签
+- **统计入口说明**：日记页右上角图标改为带文字的「心情统计」按钮
+- **备忘待办**：修复"新建笔记时待办清单整块隐藏"的入口 bug——新建即可输入，第一条待办自动创建笔记实体（复用日记编辑器 _ensureEntityId 模式）；入口文案改「待办清单（可打勾）」
+- **备忘全局搜索**：新增 /notes/search 全局搜索页（跨笔记本搜标题/正文/标签），入口在备忘主页 AppBar 放大镜
+- **日程拖拽**：时间轴块长按竖直拖动改时间（15 分钟吸附 + 顶部时间提示浮层 + 拖动中主色描边），保留时长与提醒提前量，模板实例自动分离
+
+### 已有但易被忽略的功能（本轮只是更显眼，非新增）
+
+- 日记插图/实况照片（编辑器工具栏相机）、编辑器内选心情（「记个心情」行）、笔记本颜色（5 色）、日程提醒（编辑页「提前 X 分钟」chips）、时间轴视图、重复模板
+
+### 质量与发版
+
+- 测试 **48/48 全过**（新增 1 项：日记标签 setTags 落库 + csv 读回 + 标签搜索）
+- `dart analyze` 0 error / 0 warning（8 条 info 与基线相同）；架构检查 0 违规
+- schemaVersion 1→2（diaries 加 tags 列，旧数据保留）
+- APK 验签 CN=Trinity；交付副本 `E:\DeepSeek\apk\三位一体-v4.2.0.apk`
 
 ## v4.1.0+13（2026-09-19）· 真机反馈热修
 

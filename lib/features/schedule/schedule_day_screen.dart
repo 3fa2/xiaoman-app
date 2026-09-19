@@ -30,13 +30,10 @@ class ScheduleDayScreen extends ConsumerWidget {
           DateFormat('M月d日起 · 14 天', 'zh_CN').format(start),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: AppFab(
+        icon: PhosphorIconsRegular.calendarPlus,
+        tooltip: '新建日程',
         onPressed: () => context.openScheduleEdit(dateDay: dateDay),
-        child: PhosphorIcon(
-          PhosphorIconsRegular.plus,
-          color: p.onPrimary,
-          weight: 1.5,
-        ),
       ),
       body: StreamBuilder<List<ScheduleInstance>>(
         stream: ref.watch(scheduleRepoProvider).watchRange(startDay, endDay),

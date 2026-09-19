@@ -152,6 +152,31 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                 ],
               ),
               const SizedBox(height: AppSpacing.s16),
+              if (d.tags.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.s12),
+                  child: Wrap(
+                    spacing: AppSpacing.s4,
+                    children: [
+                      for (final t in d.tags)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.s8, vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: p.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(AppRadii.rSm),
+                          ),
+                          child: Text(
+                            t,
+                            style: AppType.caption.copyWith(
+                              color: p.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               if (d.content.isNotEmpty)
                 Text(
                   d.content,

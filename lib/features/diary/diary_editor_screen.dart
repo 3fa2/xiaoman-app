@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:video_player/video_player.dart';
@@ -38,9 +37,11 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   final _title = TextEditingController();
   final _content = TextEditingController();
   final _speech = SpeechToText();
+  final _tagCtrl = TextEditingController();
   bool _listening = false;
   bool _ready = false;
   int? _moodId;
+  List<String> _tags = const []; // 实体未建时暂存，建后立即落库
   MediaOwner get _ownerType => MediaOwner.diary;
 
   late final AutosaveController _controller;
@@ -57,6 +58,9 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     final id = await repo.save(
       id: null, title: _title.text, content: _content.text, extra: _moodId,
     );
+    if (_tags.isNotEmpty) {
+      await repo.setTags(diaryId: id, tags: _tags);
+    }
     _controller.loadBaseline(
       entityId: id,
       title: _title.text,
@@ -92,6 +96,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       _title.text = diary.title;
       _content.text = diary.content;
       _moodId = diary.moodId;
+      _tags = diary.tags;
       _controller.loadBaseline(
         entityId: diary.id,
         title: diary.title,
@@ -177,6 +182,24 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     setState(() {});
   }
 
+  // ---- 标签（实体已存在则立即落库；否则暂存，首存后补写）----
+  Future<void> _addTag(String tag) async {
+    if (tag.trim().isEmpty || _tags.contains(tag.trim())) return;
+    setState(() => _tags = [..._tags, tag.trim()]);
+    final id = _entityId;
+    if (id != null) {
+      await ref.read(diaryRepoProvider).setTags(diaryId: id, tags: _tags);
+    }
+  }
+
+  Future<void> _removeTag(String tag) async {
+    setState(() => _tags = [..._tags]..remove(tag));
+    final id = _entityId;
+    if (id != null) {
+      await ref.read(diaryRepoProvider).setTags(diaryId: id, tags: _tags);
+    }
+  }
+
   void _onSaveStatus() {
     if (mounted) setState(() {});
   }
@@ -201,6 +224,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     _speech.stop();
     _title.dispose();
     _content.dispose();
+    _tagCtrl.dispose();
     super.dispose();
   }
 
@@ -432,6 +456,12 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                             );
                           },
                         ),
+                        _TagRow(
+                          tags: _tags,
+                          tagCtrl: _tagCtrl,
+                          onAdd: _addTag,
+                          onRemove: _removeTag,
+                        ),
                         const SizedBox(height: AppSpacing.withinBlock),
                         TextField(
                           controller: _content,
@@ -635,6 +665,90 @@ class _MoodPickChip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 标签行：已有标签 chips（点叉删）+ 添加入口（底部弹窗输入）
+class _TagRow extends StatelessWidget {
+  const _TagRow({
+    required this.tags,
+    required this.tagCtrl,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final List<String> tags;
+  final TextEditingController tagCtrl;
+  final ValueChanged<String> onAdd;
+  final ValueChanged<String> onRemove;
+
+  Future<void> _sheet(BuildContext context) async {
+    tagCtrl.clear();
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.page, 0, AppSpacing.page,
+          AppSpacing.s24 + MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '添加标签',
+              style: AppType.headline.copyWith(
+                color: Theme.of(ctx).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s16),
+            TextField(
+              controller: tagCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '标签名，如：工作、旅行'),
+              onSubmitted: (v) {
+                onAdd(v);
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: AppSpacing.s4,
+              runSpacing: AppSpacing.s4,
+              children: [
+                for (final t in tags)
+                  Chip(
+                    label: Text(t),
+                    onDeleted: () => onRemove(t),
+                  ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _sheet(context),
+            child: PhosphorIcon(
+              PhosphorIconsRegular.plusCircle,
+              size: 20,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }

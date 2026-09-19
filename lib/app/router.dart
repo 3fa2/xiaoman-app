@@ -10,6 +10,7 @@ import '../features/diary/mood_trend_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/notes/note_editor_screen.dart';
 import '../features/notes/note_list_screen.dart';
+import '../features/notes/note_search_screen.dart';
 import '../features/notes/notebook_grid_screen.dart';
 import '../features/schedule/schedule_edit_screen.dart';
 import '../features/schedule/schedule_day_screen.dart';
@@ -119,6 +120,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                       ),
                     ),
                   ),
+                  GoRoute(
+                    path: 'search',
+                    builder: (c, s) => const NoteSearchScreen(),
+                  ),
                 ],
               ),
             ],
@@ -173,6 +178,7 @@ extension AppNav on BuildContext {
   void openDiarySearch() => push('/diary/search');
   void openMoodTrend() => push('/diary/trend');
   void openNoteList(int notebookId) => push('/notes/list/$notebookId');
+  void openNoteSearch() => push('/notes/search');
   void openNoteEditor({int? noteId, int? notebookId}) {
     final q = [
       if (noteId != null) 'noteId=$noteId',

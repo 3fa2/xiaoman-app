@@ -67,6 +67,16 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
   }
 
   @override
+  Future<void> setTags({required int diaryId, required List<String> tags}) async {
+    await (_db.update(_db.diaries)..where((d) => d.id.equals(diaryId))).write(
+      DiariesCompanion(
+        tags: Value(tags.join(',')),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  @override
   Future<void> delete(int id) =>
       (_db.delete(_db.diaries)..where((d) => d.id.equals(id))).go();
 
@@ -75,6 +85,9 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
         dateDay: row.dateDay,
         title: row.title,
         content: row.content,
+        tags: row.tags.isEmpty
+            ? const []
+            : row.tags.split(',').where((t) => t.isNotEmpty).toList(),
         moodId: row.moodId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,

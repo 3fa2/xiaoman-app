@@ -25,14 +25,23 @@ class _NotebookGridScreenState extends ConsumerState<NotebookGridScreen> {
     final p = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('备忘')),
-      floatingActionButton: FloatingActionButton(
+      appBar: AppBar(
+        title: const Text('备忘'),
+        actions: [
+          IconButton(
+            onPressed: () => context.openNoteSearch(),
+            tooltip: '搜索所有笔记',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.magnifyingGlass,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: AppFab(
+        icon: PhosphorIconsRegular.folderPlus,
+        tooltip: '新建笔记本',
         onPressed: () => _editNotebook(context, null),
-        child: PhosphorIcon(
-          PhosphorIconsRegular.plus,
-          color: p.onPrimary,
-          weight: 1.5,
-        ),
       ),
       body: StreamBuilder<List<Notebook>>(
         stream: ref.watch(noteRepoProvider).watchNotebooks(),
@@ -42,9 +51,30 @@ class _NotebookGridScreenState extends ConsumerState<NotebookGridScreen> {
             return EmptyState(
               icon: PhosphorIconsRegular.sticker,
               title: '还没有笔记本',
-              hint: '先建一个，比如「灵感」「待办」',
+              hint: '笔记本用来分类收纳，可以选颜色区分',
               actionLabel: '新建笔记本',
               onAction: () => _editNotebook(context, null),
+              // 快捷示例：一键创建常用笔记本，别让用户对着空白发呆
+              examples: [
+                (
+                  '建「灵感」',
+                  () => ref
+                      .read(noteRepoProvider)
+                      .saveNotebook(id: null, name: '灵感', colorIndex: 1),
+                ),
+                (
+                  '建「待办」',
+                  () => ref
+                      .read(noteRepoProvider)
+                      .saveNotebook(id: null, name: '待办', colorIndex: 2),
+                ),
+                (
+                  '建「读书笔记」',
+                  () => ref
+                      .read(noteRepoProvider)
+                      .saveNotebook(id: null, name: '读书笔记', colorIndex: 3),
+                ),
+              ],
             );
           }
           return GridView.builder(

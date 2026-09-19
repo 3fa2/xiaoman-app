@@ -64,14 +64,11 @@ class _NoteListScreenState extends ConsumerState<NoteListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: AppFab(
+        icon: PhosphorIconsRegular.pencilSimple,
+        tooltip: '新建笔记',
         onPressed: () =>
             context.openNoteEditor(notebookId: widget.notebookId),
-        child: PhosphorIcon(
-          PhosphorIconsRegular.plus,
-          color: p.onPrimary,
-          weight: 1.5,
-        ),
       ),
       body: _searchMode ? _searchBody() : _listBody(repo),
     );
@@ -120,7 +117,7 @@ class _NoteListScreenState extends ConsumerState<NoteListScreen> {
           return const EmptyState(
             icon: PhosphorIconsRegular.sticker,
             title: '还没有笔记',
-            hint: '点右下角加号记一条',
+            hint: '可以写纯文字，也可以开待办清单打勾',
           );
         }
         return ListView.builder(
