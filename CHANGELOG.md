@@ -3,13 +3,25 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '5b52e378-9c5e-465d-9b00-c91d9d42dd97'
-  PropagateID: '5b52e378-9c5e-465d-9b00-c91d9d42dd97'
-  ReservedCode1: '9be6a47a-99cf-400a-ad32-1fb443119e02'
-  ReservedCode2: '9be6a47a-99cf-400a-ad32-1fb443119e02'
+  ProduceID: 'c7b412fe-1345-4b12-9a7b-f464d772ba3d'
+  PropagateID: 'c7b412fe-1345-4b12-9a7b-f464d772ba3d'
+  ReservedCode1: '0a88dc98-ea9d-4954-bb1e-bf322e156789'
+  ReservedCode2: '0a88dc98-ea9d-4954-bb1e-bf322e156789'
 ---
 
 # CHANGELOG — 三位一体 v4
+
+## v4.4.0+20（2026-09-19）· 实况照片预览从 Dialog 改为页面路由
+
+- **侧滑退出黑屏修复**：全屏预览（图片/视频）从 Dialog.fullscreen 改为标准 PageRoute。Dialog 承受不了系统预测式返回手势——侧滑时 Dialog 被瞬间 dismiss，视频画面生命周期错乱导致黑屏/错误页。页面路由走标准 pop 转场，退出动画期间画面仍在
+- **打开转场动画**：fade + scale（0.88→1），250ms standard 曲线；关闭 150ms，手感自然
+- **视频预览页自管 controller**：预览页 StatefulWidget 持有/初始化/释放 VideoPlayerController，不再由调用方传 controller 进来。侧滑返回时页面 dispose 自动清理，不会泄漏
+- **封面占位不黑闪**：视频初始化期间先显示封面图（precache 过），初始化完成切视频，转场全程有画面
+- 图片预览同样改 PageRoute + precache，转场期间图片已就绪
+- 视频/图片加载失败显示占位图标，不再黑屏
+- 详情页/编辑器不再持有 VideoPlayerController，调用更简洁
+
+测试 51/51 全过；analyze 0 error/0 warning；APK 验签 CN=Trinity
 
 ## v4.3.3+19（2026-09-19）· 第二轮全库巡检（双审查通道），修复 13 处
 

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:video_player/video_player.dart';
 
 import '../../app/router.dart';
 import '../../design/tokens.dart';
@@ -26,52 +25,8 @@ class DiaryDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
-  VideoPlayerController? _player;
-
-  @override
-  void dispose() {
-    _player?.dispose();
-    super.dispose();
-  }
-
-  /// 媒体缩略图：路径缺失/加载失败时给占位框，绝不 File(null) 崩
-  Widget _mediaThumb(MediaItem m, ColorScheme p) {
-    final path = m.thumbPath ?? m.coverPath;
-    if (path == null) {
-      return Container(
-        width: 110,
-        height: 110,
-        color: p.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: PhosphorIcon(
-          PhosphorIconsRegular.filmStrip,
-          size: 24,
-          color: p.onSurfaceVariant,
-        ),
-      );
-    }
-    return Image.file(
-      File(path),
-      width: 110,
-      height: 110,
-      fit: BoxFit.cover,
-      cacheWidth: 110,
-      cacheHeight: 110,
-      errorBuilder: (_, __, ___) => Container(
-        width: 110,
-        height: 110,
-        color: p.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: PhosphorIcon(
-          PhosphorIconsRegular.filmStrip,
-          size: 24,
-          color: p.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-
-  /// 播放视频/实况。视频文件缺失或初始化失败时回退全屏图片，点击必有反馈。
+  /// 播放视频/实况：文件缺失回退全屏图片；
+  /// controller 由预览页自管（侧滑返回走标准转场，不再黑屏）。
   Future<void> _play(MediaItem item) async {
     final videoPath = item.videoPath;
     if (videoPath == null || !File(videoPath).existsSync()) {
@@ -80,28 +35,33 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
       }
       return;
     }
-    final old = _player;
-    final player = VideoPlayerController.file(File(videoPath));
-    _player = player;
-    try {
-      await player.initialize();
-    } catch (_) {
-      old?.dispose();
-      _player = null;
-      if (item.coverPath != null && mounted) {
-        await showFullscreenImage(context, item.coverPath!);
-      }
-      return;
-    }
-    await player.setLooping(true);
-    await player.play();
-    if (mounted) {
-      setState(() {});
-      // 全屏黑底沉浸式，点任意处关闭
-      await showFullscreenVideo(context, player);
-    }
-    old?.dispose();
-    await player.pause();
+    await showFullscreenVideo(context, videoPath, coverPath: item.coverPath);
+  }
+
+  /// 媒体缩略图：路径缺失/加载失败时给占位框，绝不 File(null) 崩
+  Widget _mediaThumb(MediaItem m, ColorScheme p) {
+    final path = m.thumbPath ?? m.coverPath;
+    Widget fallback() => Container(
+          width: 110,
+          height: 110,
+          color: p.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: PhosphorIcon(
+            PhosphorIconsRegular.filmStrip,
+            size: 24,
+            color: p.onSurfaceVariant,
+          ),
+        );
+    if (path == null) return fallback();
+    return Image.file(
+      File(path),
+      width: 110,
+      height: 110,
+      fit: BoxFit.cover,
+      cacheWidth: 110,
+      cacheHeight: 110,
+      errorBuilder: (_, __, ___) => fallback(),
+    );
   }
 
   @override

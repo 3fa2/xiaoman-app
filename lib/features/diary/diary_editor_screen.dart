@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
-import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
@@ -50,7 +49,6 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   MediaOwner get _ownerType => MediaOwner.diary;
 
   late final AutosaveController _controller;
-  VideoPlayerController? _previewPlayer;
   int? _savedId;
 
   /// 实体 id：编辑已有 → 固定；新建 → 首存后回填
@@ -269,7 +267,6 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_onSaveStatus);
     _controller.dispose();
-    _previewPlayer?.dispose();
     _speech.stop();
     _title.dispose();
     _content.dispose();
@@ -392,32 +389,20 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     if (mounted) setState(() {});
   }
 
-  // ---- 实况照片播放（全屏黑底，点任意处关闭；视频缺失回退图片）----
+  // ---- 实况照片播放（全屏页面自管 controller；视频缺失回退图片）----
   Future<void> _playLivePhoto(MediaItem item) async {
     final videoPath = item.videoPath;
     if (videoPath == null || !File(videoPath).existsSync()) {
-      await showFullscreenImage(context, item.coverPath!);
+      if (item.coverPath != null) {
+        await showFullscreenImage(context, item.coverPath!);
+      }
       return;
     }
-    final old = _previewPlayer;
-    final player = VideoPlayerController.file(File(videoPath));
-    _previewPlayer = player;
-    try {
-      await player.initialize();
-    } catch (_) {
-      old?.dispose();
-      _previewPlayer = null;
-      if (mounted) await showFullscreenImage(context, item.coverPath!);
-      return;
-    }
-    await player.setLooping(true);
-    await player.play();
-    if (mounted) {
-      setState(() {});
-      await showFullscreenVideo(context, player);
-    }
-    old?.dispose();
-    await player.pause();
+    await showFullscreenVideo(
+      context,
+      videoPath,
+      coverPath: item.coverPath,
+    );
   }
 
   // ---- 语音输入 ----

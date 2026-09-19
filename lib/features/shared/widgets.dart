@@ -444,53 +444,214 @@ class MoodDot extends StatelessWidget {
   }
 }
 
-/// 全屏黑底查看图片：可双指缩放，点任意处关闭。
-/// （替代底部弹窗预览——后者上方留白近三分之一屏，看图体验差）
+/// ============================================================
+/// 全屏媒体预览（v4.4）
+/// 从 Dialog 改为标准 PageRoute：Dialog 承受不了系统预测式返回手势
+/// （侧滑会瞬间 dismiss 且视频画面生命周期错乱 → 黑屏/错误页）。
+/// 页面自管 player 生命周期；转场 fade + scale（0.85→1）。
+/// ============================================================
+
 Future<void> showFullscreenImage(BuildContext context, String path) {
-  return showDialog<void>(
-    context: context,
-    barrierColor: Colors.black,
-    barrierDismissible: true,
-    useSafeArea: false,
-    builder: (ctx) => Dialog.fullscreen(
-      backgroundColor: Colors.black,
-      child: GestureDetector(
-        onTap: () => Navigator.of(ctx).pop(),
-        child: InteractiveViewer(
-          maxScale: 4,
-          child: Center(
-            child: Image.file(File(path), fit: BoxFit.contain),
+  return Navigator.of(context).push(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierColor: Colors.black,
+      transitionDuration: MotionDuration.base,
+      reverseTransitionDuration: MotionDuration.fast,
+      pageBuilder: (_, __, ___) => _FullscreenImagePage(path: path),
+      transitionsBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: MotionCurve.standard,
+          reverseCurve: MotionCurve.standard,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.88, end: 1.0).animate(curved),
+            child: child,
           ),
-        ),
-      ),
+        );
+      },
     ),
   );
 }
 
-/// 全屏黑底播放视频（实况照片用）：点击关闭，controller 生命周期由调用方管。
-/// Center + AspectRatio：竖屏视频撑满高、横屏撑满宽，不再有弹窗留白。
+/// 全屏黑底播放视频/实况：点击关闭；controller 由本页持有与释放，
+/// 侧滑返回走标准 pop 转场，退出动画期间画面仍在（不黑屏）。
 Future<void> showFullscreenVideo(
   BuildContext context,
-  VideoPlayerController player,
-) {
-  return showDialog<void>(
-    context: context,
-    barrierColor: Colors.black,
-    barrierDismissible: true,
-    useSafeArea: false,
-    builder: (ctx) => Dialog.fullscreen(
+  String videoPath, {
+  String? coverPath,
+}) {
+  return Navigator.of(context).push(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierColor: Colors.black,
+      transitionDuration: MotionDuration.base,
+      reverseTransitionDuration: MotionDuration.fast,
+      pageBuilder: (_, __, ___) => _FullscreenVideoPage(
+        videoPath: videoPath,
+        coverPath: coverPath,
+      ),
+      transitionsBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: MotionCurve.standard,
+          reverseCurve: MotionCurve.standard,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.88, end: 1.0).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    ),
+  );
+}
+
+class _FullscreenImagePage extends StatefulWidget {
+  const _FullscreenImagePage({required this.path});
+
+  final String path;
+
+  @override
+  State<_FullscreenImagePage> createState() => _FullscreenImagePageState();
+}
+
+class _FullscreenImagePageState extends State<_FullscreenImagePage> {
+  @override
+  void initState() {
+    super.initState();
+    // 预解码：转场过程中图片已就绪，不黑闪
+    precacheImage(FileImage(File(widget.path)), context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
       backgroundColor: Colors.black,
-      child: GestureDetector(
-        onTap: () => Navigator.of(ctx).pop(),
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: player.value.aspectRatio,
-            child: VideoPlayer(player),
+      body: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: InteractiveViewer(
+          maxScale: 4,
+          child: Center(
+            child: Image.file(
+              File(widget.path),
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const _PreviewUnavailable(),
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _FullscreenVideoPage extends StatefulWidget {
+  const _FullscreenVideoPage({required this.videoPath, this.coverPath});
+
+  final String videoPath;
+
+  /// 转场期间先显示封面，初始化完成切视频（全程有画面）
+  final String? coverPath;
+
+  @override
+  State<_FullscreenVideoPage> createState() => _FullscreenVideoPageState();
+}
+
+class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
+  VideoPlayerController? _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.coverPath != null) {
+      precacheImage(FileImage(File(widget.coverPath!)), context);
+    }
+    _init();
+  }
+
+  Future<void> _init() async {
+    final c = VideoPlayerController.file(File(widget.videoPath));
+    try {
+      await c.initialize();
+    } catch (_) {
+      await c.dispose();
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+    await c.setLooping(true);
+    await c.play();
+    if (mounted) {
+      setState(() => _controller = c);
+    } else {
+      await c.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controller;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Center(
+          child: _failed
+              ? const _PreviewUnavailable(message: '视频打不开')
+              : c == null
+                  ? (widget.coverPath != null
+                      ? Image.file(
+                          File(widget.coverPath!),
+                          fit: BoxFit.contain,
+                        )
+                      : const CircularProgressIndicator(
+                          color: Colors.white54,
+                        ))
+                  : AspectRatio(
+                      aspectRatio: c.value.aspectRatio,
+                      child: VideoPlayer(c),
+                    ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewUnavailable extends StatelessWidget {
+  const _PreviewUnavailable({this.message = '图片打不开'});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PhosphorIcon(
+          PhosphorIconsRegular.warningCircle,
+          size: 32,
+          color: p.onSurfaceVariant,
+        ),
+        const SizedBox(height: AppSpacing.s8),
+        Text(
+          message,
+          style: AppType.label.copyWith(color: p.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
 }
 
 /// 统一确认弹窗（底部弹窗形态，跟手拖拽关闭）
