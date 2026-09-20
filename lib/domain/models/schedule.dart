@@ -10,6 +10,8 @@ class ScheduleTemplate {
   final int colorIndex;
   final String? rrule;
   final String exdates; // csv yyyymmdd，跳过某天（EXDATE，可撤销）
+  final int? startDate; // yyyymmdd：单次/时间段的起始日（v4.8）
+  final int? endDate; // yyyymmdd：时间段结束日（null=单次或无限重复）
   final int startMinutes;
   final int durationMinutes;
   final int remindMinutesBefore;
@@ -24,6 +26,8 @@ class ScheduleTemplate {
     required this.colorIndex,
     required this.rrule,
     required this.exdates,
+    this.startDate,
+    this.endDate,
     required this.startMinutes,
     required this.durationMinutes,
     required this.remindMinutesBefore,

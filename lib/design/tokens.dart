@@ -181,27 +181,28 @@ abstract final class NotebookPalette {
   }
 }
 
-/// 日程色：8 个，饱和度低，只在日程块内出现
+/// 日程色：8 个，色相与旧版一一对应，v4.8 提饱和/加深（用户反馈"太淡"，
+/// 左侧竖条与白卡片对比度不足），只在日程块内出现
 abstract final class SchedulePalette {
   static const lightColors = <Color>[
-    Color(0xFF6E8CA8), // 雾蓝
-    Color(0xFF7FA08A), // 苔绿
-    Color(0xFFA89380), // 陶灰
-    Color(0xFF8E8AA8), // 雾紫
-    Color(0xFFA8878B), // 灰玫瑰
-    Color(0xFF8AA0A8), // 灰青
-    Color(0xFFA89E80), // 姜黄
-    Color(0xFF889BAA), // 石蓝
+    Color(0xFF4E82AC), // 蓝
+    Color(0xFF55966F), // 绿
+    Color(0xFFB08154), // 橙
+    Color(0xFF7D74A8), // 紫
+    Color(0xFFB06E7D), // 玫红
+    Color(0xFF4E96A8), // 青
+    Color(0xFFAD8B45), // 姜黄
+    Color(0xFF5C8CA6), // 石蓝
   ];
   static const darkColors = <Color>[
-    Color(0xFF8FA9C2),
-    Color(0xFF93B3A0),
-    Color(0xFFB9A795),
-    Color(0xFFA3A0BE),
-    Color(0xFFBEA0A4),
-    Color(0xFFA2B5BC),
-    Color(0xFFBFB490),
-    Color(0xFF9DAFBF),
+    Color(0xFF7FA8CC),
+    Color(0xFF82B99A),
+    Color(0xFFC7A47B),
+    Color(0xFF9E93C9),
+    Color(0xFFC794A3),
+    Color(0xFF7FB4C4),
+    Color(0xFFC4A96E),
+    Color(0xFF86AFC7),
   ];
 
   static Color of(int index, {required bool dark}) {

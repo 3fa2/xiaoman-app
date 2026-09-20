@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -54,6 +54,11 @@ class AppDatabase extends _$AppDatabase {
           // v3 → v4：预设心情 hue 重排（v4.7.0，旧版三色挤蓝青区难分辨）
           if (from < 4) {
             await _refreshPresetMoodHues();
+          }
+          // v4 → v5：模板加 startDate/endDate（v4.8 单次/时间段日程）
+          if (from < 5) {
+            await m.addColumn(scheduleTemplates, scheduleTemplates.startDate);
+            await m.addColumn(scheduleTemplates, scheduleTemplates.endDate);
           }
         },
       );

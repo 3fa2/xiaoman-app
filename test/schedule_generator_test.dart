@@ -2,7 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trinity/domain/models/schedule.dart';
 import 'package:trinity/domain/services/schedule_generator.dart';
 
-ScheduleTemplate _tpl(int id, String rrule, int start, {bool enabled = true}) =>
+ScheduleTemplate _tpl(
+  int id,
+  String rrule,
+  int start, {
+  bool enabled = true,
+  int? startDate,
+  int? endDate,
+}) =>
     ScheduleTemplate(
       id: id,
       title: 'T$id',
@@ -10,6 +17,8 @@ ScheduleTemplate _tpl(int id, String rrule, int start, {bool enabled = true}) =>
       colorIndex: 0,
       rrule: rrule,
       exdates: '',
+      startDate: startDate,
+      endDate: endDate,
       startMinutes: start,
       durationMinutes: 60,
       remindMinutesBefore: 0,
@@ -122,6 +131,63 @@ void main() {
     expect(ScheduleGenerator.shouldDropInstance(past, today), isFalse);
     expect(ScheduleGenerator.shouldDropInstance(detached, today), isFalse);
     expect(ScheduleGenerator.shouldDropInstance(done, today), isFalse);
+  });
+
+  test('单次：rrule 空 + startDate 生成当天 1 个实例（窗口外不生成）', () {
+    // 窗口 9/7-9/13，单次日 9/25 在窗口外 → 不生成
+    var missing = ScheduleGenerator.missing(
+      templates: [_tpl(1, '', 9 * 60, startDate: 20260925)],
+      existing: const [],
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+    expect(missing, isEmpty);
+
+    // 窗口含 9/25 → 恰好 1 个
+    missing = ScheduleGenerator.missing(
+      templates: [_tpl(1, '', 9 * 60, startDate: 20260925)],
+      existing: const [],
+      rangeStart: DateTime(2026, 9, 25),
+      rangeEnd: DateTime(2026, 10, 8),
+    );
+    expect(missing.length, 1);
+    expect(missing.first.dateDay, 20260925);
+    expect(missing.first.startMinutes, 540);
+  });
+
+  test('连续几天：startDate..endDate 每天各 1 个（中秋 25/26/27）', () {
+    final missing = ScheduleGenerator.missing(
+      templates: [_tpl(1, '', 9 * 60, startDate: 20260925, endDate: 20260927)],
+      existing: const [],
+      rangeStart: DateTime(2026, 9, 25),
+      rangeEnd: DateTime(2026, 10, 8),
+    );
+    expect(missing.map((m) => m.dateDay), [20260925, 20260926, 20260927]);
+  });
+
+  test('老的"不重复"模板（rrule 空 + 无日期）不生成，不炸', () {
+    final missing = ScheduleGenerator.missing(
+      templates: [_tpl(1, '', 9 * 60)],
+      existing: const [],
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+    expect(missing, isEmpty);
+  });
+
+  test('重复规则 + startDate/endDate 作为范围过滤', () {
+    final missing = ScheduleGenerator.missing(
+      templates: [
+        _tpl(
+          1, 'FREQ=DAILY', 9 * 60,
+          startDate: 20260910, endDate: 20260912,
+        ),
+      ],
+      existing: const [],
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+    expect(missing.map((m) => m.dateDay), [20260910, 20260911, 20260912]);
   });
 
   test('exdates 在生成层被剔除', () {

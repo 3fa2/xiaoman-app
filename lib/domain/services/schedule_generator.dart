@@ -36,16 +36,42 @@ class ScheduleGenerator {
         .toList();
 
     for (final t in templates) {
-      if (!t.enabled || t.rrule == null || t.rrule!.isEmpty) continue;
-      // 模板起始日最早回看 30 天，避免"模板刚建，start 就在未来"漏生成
-      final back = rangeStart.subtract(const Duration(days: 30));
-      final dates = RruleService.expand(
-        rrule: t.rrule!,
-        start: back,
-        rangeStart: rangeStart,
-        rangeEnd: rangeEnd,
-        exdatesCsv: t.exdates,
-      );
+      if (!t.enabled) continue;
+      // 生成该模板在窗口内的日期集合：
+      // - rrule 为空：单次/时间段（靠 startDate/endDate，v4.8）
+      // - rrule 非空：按规则展开；若设了 startDate/endDate 再做范围过滤
+      final List<int> dates;
+      if (t.rrule == null || t.rrule!.isEmpty) {
+        final s = t.startDate;
+        if (s == null) continue; // 无日期信息的老"不重复"模板：无法定位，跳过
+        final e = t.endDate ?? s;
+        // 与窗口求交集后再遍历（跨年时间段也不会白循环）
+        final winStartDay = DateDay.of(rangeStart);
+        final winEndDay = DateDay.of(rangeEnd);
+        var d = s > winStartDay ? s : winStartDay;
+        final to = e < winEndDay ? e : winEndDay;
+        dates = <int>[];
+        while (d <= to) {
+          dates.add(d);
+          d = DateDay.addDays(d, 1);
+        }
+      } else {
+        // 模板起始日最早回看 30 天，避免"模板刚建，start 就在未来"漏生成
+        final back = rangeStart.subtract(const Duration(days: 30));
+        dates = RruleService.expand(
+          rrule: t.rrule!,
+          start: back,
+          rangeStart: rangeStart,
+          rangeEnd: rangeEnd,
+          exdatesCsv: t.exdates,
+        );
+        if (t.startDate != null) {
+          dates.removeWhere((d) => d < t.startDate!);
+        }
+        if (t.endDate != null) {
+          dates.removeWhere((d) => d > t.endDate!);
+        }
+      }
       // 本模板自己的既有实例（未 detach）不算冲突（幂等重生成）
       final ownExisting = existing
           .where((e) => e.templateId == t.id && !e.detached)

@@ -2673,6 +2673,18 @@ class $ScheduleTemplatesTable extends ScheduleTemplates
   late final GeneratedColumn<String> rrule = GeneratedColumn<String>(
       'rrule', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _startDateMeta =
+      const VerificationMeta('startDate');
+  @override
+  late final GeneratedColumn<int> startDate = GeneratedColumn<int>(
+      'start_date', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _endDateMeta =
+      const VerificationMeta('endDate');
+  @override
+  late final GeneratedColumn<int> endDate = GeneratedColumn<int>(
+      'end_date', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _exdatesMeta =
       const VerificationMeta('exdates');
   @override
@@ -2730,6 +2742,8 @@ class $ScheduleTemplatesTable extends ScheduleTemplates
         description,
         colorIndex,
         rrule,
+        startDate,
+        endDate,
         exdates,
         startMinutes,
         durationMinutes,
@@ -2773,6 +2787,14 @@ class $ScheduleTemplatesTable extends ScheduleTemplates
     if (data.containsKey('rrule')) {
       context.handle(
           _rruleMeta, rrule.isAcceptableOrUnknown(data['rrule']!, _rruleMeta));
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(_startDateMeta,
+          startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta));
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(_endDateMeta,
+          endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta));
     }
     if (data.containsKey('exdates')) {
       context.handle(_exdatesMeta,
@@ -2835,6 +2857,10 @@ class $ScheduleTemplatesTable extends ScheduleTemplates
           .read(DriftSqlType.int, data['${effectivePrefix}color_index'])!,
       rrule: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}rrule']),
+      startDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}start_date']),
+      endDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}end_date']),
       exdates: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}exdates'])!,
       startMinutes: attachedDatabase.typeMapping
@@ -2865,6 +2891,8 @@ class ScheduleTemplateRow extends DataClass
   final String description;
   final int colorIndex;
   final String? rrule;
+  final int? startDate;
+  final int? endDate;
   final String exdates;
   final int startMinutes;
   final int durationMinutes;
@@ -2878,6 +2906,8 @@ class ScheduleTemplateRow extends DataClass
       required this.description,
       required this.colorIndex,
       this.rrule,
+      this.startDate,
+      this.endDate,
       required this.exdates,
       required this.startMinutes,
       required this.durationMinutes,
@@ -2894,6 +2924,12 @@ class ScheduleTemplateRow extends DataClass
     map['color_index'] = Variable<int>(colorIndex);
     if (!nullToAbsent || rrule != null) {
       map['rrule'] = Variable<String>(rrule);
+    }
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<int>(startDate);
+    }
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<int>(endDate);
     }
     map['exdates'] = Variable<String>(exdates);
     map['start_minutes'] = Variable<int>(startMinutes);
@@ -2913,6 +2949,12 @@ class ScheduleTemplateRow extends DataClass
       colorIndex: Value(colorIndex),
       rrule:
           rrule == null && nullToAbsent ? const Value.absent() : Value(rrule),
+      startDate: startDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startDate),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
       exdates: Value(exdates),
       startMinutes: Value(startMinutes),
       durationMinutes: Value(durationMinutes),
@@ -2932,6 +2974,8 @@ class ScheduleTemplateRow extends DataClass
       description: serializer.fromJson<String>(json['description']),
       colorIndex: serializer.fromJson<int>(json['colorIndex']),
       rrule: serializer.fromJson<String?>(json['rrule']),
+      startDate: serializer.fromJson<int?>(json['startDate']),
+      endDate: serializer.fromJson<int?>(json['endDate']),
       exdates: serializer.fromJson<String>(json['exdates']),
       startMinutes: serializer.fromJson<int>(json['startMinutes']),
       durationMinutes: serializer.fromJson<int>(json['durationMinutes']),
@@ -2951,6 +2995,8 @@ class ScheduleTemplateRow extends DataClass
       'description': serializer.toJson<String>(description),
       'colorIndex': serializer.toJson<int>(colorIndex),
       'rrule': serializer.toJson<String?>(rrule),
+      'startDate': serializer.toJson<int?>(startDate),
+      'endDate': serializer.toJson<int?>(endDate),
       'exdates': serializer.toJson<String>(exdates),
       'startMinutes': serializer.toJson<int>(startMinutes),
       'durationMinutes': serializer.toJson<int>(durationMinutes),
@@ -2967,6 +3013,8 @@ class ScheduleTemplateRow extends DataClass
           String? description,
           int? colorIndex,
           Value<String?> rrule = const Value.absent(),
+          Value<int?> startDate = const Value.absent(),
+          Value<int?> endDate = const Value.absent(),
           String? exdates,
           int? startMinutes,
           int? durationMinutes,
@@ -2980,6 +3028,8 @@ class ScheduleTemplateRow extends DataClass
         description: description ?? this.description,
         colorIndex: colorIndex ?? this.colorIndex,
         rrule: rrule.present ? rrule.value : this.rrule,
+        startDate: startDate.present ? startDate.value : this.startDate,
+        endDate: endDate.present ? endDate.value : this.endDate,
         exdates: exdates ?? this.exdates,
         startMinutes: startMinutes ?? this.startMinutes,
         durationMinutes: durationMinutes ?? this.durationMinutes,
@@ -2997,6 +3047,8 @@ class ScheduleTemplateRow extends DataClass
       colorIndex:
           data.colorIndex.present ? data.colorIndex.value : this.colorIndex,
       rrule: data.rrule.present ? data.rrule.value : this.rrule,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
       exdates: data.exdates.present ? data.exdates.value : this.exdates,
       startMinutes: data.startMinutes.present
           ? data.startMinutes.value
@@ -3021,6 +3073,8 @@ class ScheduleTemplateRow extends DataClass
           ..write('description: $description, ')
           ..write('colorIndex: $colorIndex, ')
           ..write('rrule: $rrule, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
           ..write('exdates: $exdates, ')
           ..write('startMinutes: $startMinutes, ')
           ..write('durationMinutes: $durationMinutes, ')
@@ -3039,6 +3093,8 @@ class ScheduleTemplateRow extends DataClass
       description,
       colorIndex,
       rrule,
+      startDate,
+      endDate,
       exdates,
       startMinutes,
       durationMinutes,
@@ -3055,6 +3111,8 @@ class ScheduleTemplateRow extends DataClass
           other.description == this.description &&
           other.colorIndex == this.colorIndex &&
           other.rrule == this.rrule &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
           other.exdates == this.exdates &&
           other.startMinutes == this.startMinutes &&
           other.durationMinutes == this.durationMinutes &&
@@ -3070,6 +3128,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
   final Value<String> description;
   final Value<int> colorIndex;
   final Value<String?> rrule;
+  final Value<int?> startDate;
+  final Value<int?> endDate;
   final Value<String> exdates;
   final Value<int> startMinutes;
   final Value<int> durationMinutes;
@@ -3083,6 +3143,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
     this.description = const Value.absent(),
     this.colorIndex = const Value.absent(),
     this.rrule = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
     this.exdates = const Value.absent(),
     this.startMinutes = const Value.absent(),
     this.durationMinutes = const Value.absent(),
@@ -3097,6 +3159,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
     this.description = const Value.absent(),
     this.colorIndex = const Value.absent(),
     this.rrule = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
     this.exdates = const Value.absent(),
     required int startMinutes,
     required int durationMinutes,
@@ -3115,6 +3179,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
     Expression<String>? description,
     Expression<int>? colorIndex,
     Expression<String>? rrule,
+    Expression<int>? startDate,
+    Expression<int>? endDate,
     Expression<String>? exdates,
     Expression<int>? startMinutes,
     Expression<int>? durationMinutes,
@@ -3129,6 +3195,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
       if (description != null) 'description': description,
       if (colorIndex != null) 'color_index': colorIndex,
       if (rrule != null) 'rrule': rrule,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
       if (exdates != null) 'exdates': exdates,
       if (startMinutes != null) 'start_minutes': startMinutes,
       if (durationMinutes != null) 'duration_minutes': durationMinutes,
@@ -3146,6 +3214,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
       Value<String>? description,
       Value<int>? colorIndex,
       Value<String?>? rrule,
+      Value<int?>? startDate,
+      Value<int?>? endDate,
       Value<String>? exdates,
       Value<int>? startMinutes,
       Value<int>? durationMinutes,
@@ -3159,6 +3229,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
       description: description ?? this.description,
       colorIndex: colorIndex ?? this.colorIndex,
       rrule: rrule ?? this.rrule,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
       exdates: exdates ?? this.exdates,
       startMinutes: startMinutes ?? this.startMinutes,
       durationMinutes: durationMinutes ?? this.durationMinutes,
@@ -3186,6 +3258,12 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
     }
     if (rrule.present) {
       map['rrule'] = Variable<String>(rrule.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<int>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<int>(endDate.value);
     }
     if (exdates.present) {
       map['exdates'] = Variable<String>(exdates.value);
@@ -3219,6 +3297,8 @@ class ScheduleTemplatesCompanion extends UpdateCompanion<ScheduleTemplateRow> {
           ..write('description: $description, ')
           ..write('colorIndex: $colorIndex, ')
           ..write('rrule: $rrule, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
           ..write('exdates: $exdates, ')
           ..write('startMinutes: $startMinutes, ')
           ..write('durationMinutes: $durationMinutes, ')
@@ -5806,6 +5886,8 @@ typedef $$ScheduleTemplatesTableCreateCompanionBuilder
   Value<String> description,
   Value<int> colorIndex,
   Value<String?> rrule,
+  Value<int?> startDate,
+  Value<int?> endDate,
   Value<String> exdates,
   required int startMinutes,
   required int durationMinutes,
@@ -5821,6 +5903,8 @@ typedef $$ScheduleTemplatesTableUpdateCompanionBuilder
   Value<String> description,
   Value<int> colorIndex,
   Value<String?> rrule,
+  Value<int?> startDate,
+  Value<int?> endDate,
   Value<String> exdates,
   Value<int> startMinutes,
   Value<int> durationMinutes,
@@ -5853,6 +5937,12 @@ class $$ScheduleTemplatesTableFilterComposer
 
   ColumnFilters<String> get rrule => $composableBuilder(
       column: $table.rrule, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get exdates => $composableBuilder(
       column: $table.exdates, builder: (column) => ColumnFilters(column));
@@ -5902,6 +5992,12 @@ class $$ScheduleTemplatesTableOrderingComposer
   ColumnOrderings<String> get rrule => $composableBuilder(
       column: $table.rrule, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get exdates => $composableBuilder(
       column: $table.exdates, builder: (column) => ColumnOrderings(column));
 
@@ -5950,6 +6046,12 @@ class $$ScheduleTemplatesTableAnnotationComposer
 
   GeneratedColumn<String> get rrule =>
       $composableBuilder(column: $table.rrule, builder: (column) => column);
+
+  GeneratedColumn<int> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<int> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
 
   GeneratedColumn<String> get exdates =>
       $composableBuilder(column: $table.exdates, builder: (column) => column);
@@ -6007,6 +6109,8 @@ class $$ScheduleTemplatesTableTableManager extends RootTableManager<
             Value<String> description = const Value.absent(),
             Value<int> colorIndex = const Value.absent(),
             Value<String?> rrule = const Value.absent(),
+            Value<int?> startDate = const Value.absent(),
+            Value<int?> endDate = const Value.absent(),
             Value<String> exdates = const Value.absent(),
             Value<int> startMinutes = const Value.absent(),
             Value<int> durationMinutes = const Value.absent(),
@@ -6021,6 +6125,8 @@ class $$ScheduleTemplatesTableTableManager extends RootTableManager<
             description: description,
             colorIndex: colorIndex,
             rrule: rrule,
+            startDate: startDate,
+            endDate: endDate,
             exdates: exdates,
             startMinutes: startMinutes,
             durationMinutes: durationMinutes,
@@ -6035,6 +6141,8 @@ class $$ScheduleTemplatesTableTableManager extends RootTableManager<
             Value<String> description = const Value.absent(),
             Value<int> colorIndex = const Value.absent(),
             Value<String?> rrule = const Value.absent(),
+            Value<int?> startDate = const Value.absent(),
+            Value<int?> endDate = const Value.absent(),
             Value<String> exdates = const Value.absent(),
             required int startMinutes,
             required int durationMinutes,
@@ -6049,6 +6157,8 @@ class $$ScheduleTemplatesTableTableManager extends RootTableManager<
             description: description,
             colorIndex: colorIndex,
             rrule: rrule,
+            startDate: startDate,
+            endDate: endDate,
             exdates: exdates,
             startMinutes: startMinutes,
             durationMinutes: durationMinutes,

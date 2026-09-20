@@ -99,6 +99,11 @@ class ScheduleTemplates extends Table {
   TextColumn get description => text().withDefault(const Constant(''))();
   IntColumn get colorIndex => integer().withDefault(const Constant(0))();
   TextColumn get rrule => text().nullable()(); // RFC5545 子集
+  // 单次/时间段（v4.8 新增）：rrule 为空时靠这两个字段生成实例——
+  // startDate 当天一个实例（单次）；endDate 非空则 startDate..endDate 每天一个（连续几天）。
+  // rrule 非空时作为可选范围过滤（未来扩展，UI 暂不暴露）。
+  IntColumn get startDate => integer().nullable()(); // yyyymmdd
+  IntColumn get endDate => integer().nullable()(); // yyyymmdd
   TextColumn get exdates => text().withDefault(const Constant(''))(); // csv yyyymmdd
   IntColumn get startMinutes => integer()(); // 0-1439
   IntColumn get durationMinutes => integer()();

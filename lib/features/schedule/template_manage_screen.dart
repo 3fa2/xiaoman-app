@@ -82,7 +82,7 @@ class TemplateManageScreen extends ConsumerWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    '${describeRrule(t.rrule)} · '
+                                    '${t.rrule == null || t.rrule!.isEmpty ? describeRange(t.startDate, t.endDate) : describeRrule(t.rrule)} · '
                                     '${formatMinutes(t.startMinutes)} 起 · '
                                     '${t.durationMinutes} 分钟',
                                     style: AppType.caption.copyWith(
@@ -157,9 +157,25 @@ class TemplateManageScreen extends ConsumerWidget {
   var nthWeek = 1;
   var monthDay = 1;
   var interval = 1;
+  // 单次/时间段（v4.8）：默认今天
+  final nowDay = DateTime.now();
+  final todayInt = nowDay.year * 10000 + nowDay.month * 100 + nowDay.day;
+  var onceDate = t?.startDate ?? todayInt;
+  var rangeFrom = t?.startDate ?? todayInt;
+  var rangeTo = t?.endDate ?? todayInt;
 
   // 回填规则（已有模板）
-  if (t?.rrule != null && t!.rrule!.isNotEmpty) {
+  if (t?.rrule == null || (t?.rrule?.isEmpty ?? true)) {
+    // rrule 空：靠 startDate/endDate 区分单次/时间段
+    final s = t?.startDate;
+    final e = t?.endDate;
+    if (s != null) {
+      freq = (e != null && e != s) ? RepeatFreq.range : RepeatFreq.none;
+      onceDate = s;
+      rangeFrom = s;
+      rangeTo = e ?? s;
+    }
+  } else if (t!.rrule!.isNotEmpty) {
     final parts = RruleService.parse(t.rrule!);
     interval = int.tryParse(parts['INTERVAL'] ?? '1') ?? 1;
     freq = switch (parts['FREQ']) {
@@ -223,7 +239,7 @@ class TemplateManageScreen extends ConsumerWidget {
                 Wrap(
                   spacing: AppSpacing.s8,
                   children: [
-                    for (var i = 0; i < 4; i++)
+                    for (var i = 0; i < SchedulePalette.lightColors.length; i++)
                       GestureDetector(
                         onTap: () => setSheet(() => colorIndex = i),
                         child: Container(
@@ -279,7 +295,10 @@ class TemplateManageScreen extends ConsumerWidget {
                   decoration: const InputDecoration(labelText: '重复'),
                   items: const [
                     DropdownMenuItem(
-                      value: RepeatFreq.none, child: Text('不重复'),
+                      value: RepeatFreq.none, child: Text('不重复（选某天）'),
+                    ),
+                    DropdownMenuItem(
+                      value: RepeatFreq.range, child: Text('连续几天（选起止）'),
                     ),
                     DropdownMenuItem(
                       value: RepeatFreq.daily, child: Text('每天'),
@@ -305,6 +324,73 @@ class TemplateManageScreen extends ConsumerWidget {
                   ],
                   onChanged: (v) => setSheet(() => freq = v ?? RepeatFreq.none),
                 ),
+                if (freq == RepeatFreq.none || freq == RepeatFreq.range)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: DateDay.toDateTime(
+                                freq == RepeatFreq.none ? onceDate : rangeFrom,
+                              ),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              final dd = picked.year * 10000 +
+                                  picked.month * 100 +
+                                  picked.day;
+                              setSheet(() {
+                                if (freq == RepeatFreq.none) {
+                                  onceDate = dd;
+                                } else {
+                                  rangeFrom = dd;
+                                  if (rangeTo < dd) rangeTo = dd;
+                                }
+                              });
+                            }
+                          },
+                          child: Text(
+                            freq == RepeatFreq.none
+                                ? '日期 ${onceDate ~/ 10000}/'
+                                    '${(onceDate ~/ 100) % 100}/${onceDate % 100}'
+                                : '从 ${rangeFrom ~/ 10000}/'
+                                    '${(rangeFrom ~/ 100) % 100}/${rangeFrom % 100}',
+                          ),
+                        ),
+                      ),
+                      if (freq == RepeatFreq.range) ...[
+                        const SizedBox(width: AppSpacing.s8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: ctx,
+                                initialDate: DateDay.toDateTime(rangeTo),
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) {
+                                final dd = picked.year * 10000 +
+                                    picked.month * 100 +
+                                    picked.day;
+                                setSheet(() {
+                                  rangeTo = dd;
+                                  if (rangeFrom > dd) rangeFrom = dd;
+                                });
+                              }
+                            },
+                            child: Text(
+                              '到 ${rangeTo ~/ 10000}/'
+                              '${(rangeTo ~/ 100) % 100}/${rangeTo % 100}',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 if (freq == RepeatFreq.dailyInterval)
                   DropdownButtonFormField<int>(
                     initialValue: interval < 2 ? 3 : interval,
@@ -396,6 +482,25 @@ class TemplateManageScreen extends ConsumerWidget {
       nthWeek: nthWeek,
       monthDay: monthDay,
     );
+    // 单次/时间段：日期写进 startDate/endDate（rrule 为空）
+    final int? startDate;
+    final int? endDate;
+    switch (freq) {
+      case RepeatFreq.none:
+        startDate = onceDate;
+        endDate = null;
+      case RepeatFreq.range:
+        startDate = rangeFrom;
+        endDate = rangeTo;
+      case RepeatFreq.daily:
+      case RepeatFreq.dailyInterval:
+      case RepeatFreq.weekly:
+      case RepeatFreq.monthlyByNthWeekday:
+      case RepeatFreq.monthlyByDate:
+      case RepeatFreq.yearly:
+        startDate = null;
+        endDate = null;
+    }
     final now = DateTime.now();
     final template = ScheduleTemplate(
       id: t?.id ?? 0,
@@ -404,6 +509,8 @@ class TemplateManageScreen extends ConsumerWidget {
       colorIndex: colorIndex,
       rrule: rrule,
       exdates: t?.exdates ?? '',
+      startDate: startDate,
+      endDate: endDate,
       startMinutes: start,
       durationMinutes: duration,
       remindMinutesBefore: remind,

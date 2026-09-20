@@ -178,7 +178,8 @@ class RruleService {
     return out;
   }
 
-  /// 中文语义 → RRULE 字符串（编辑器用）
+  /// 中文语义 → RRULE 字符串（编辑器用）。
+  /// RepeatFreq.none/range 返回 null：日期语义靠模板的 startDate/endDate 表达。
   static String? build({
     required RepeatFreq freq,
     int interval = 1,
@@ -188,6 +189,7 @@ class RruleService {
   }) {
     switch (freq) {
       case RepeatFreq.none:
+      case RepeatFreq.range:
         return null;
       case RepeatFreq.daily:
         return interval == 1 ? 'FREQ=DAILY' : 'FREQ=DAILY;INTERVAL=$interval';
@@ -222,6 +224,19 @@ enum RepeatFreq {
   monthlyByNthWeekday,
   monthlyByDate,
   yearly,
+  range, // 连续几天（startDate..endDate 每天，v4.8）
+}
+
+/// 单次/时间段的中文摘要（模板页展示）
+String describeRange(int? startDate, int? endDate) {
+  if (startDate == null) return '不重复';
+  final s = startDate;
+  final e = endDate;
+  if (e == null || e == s) {
+    return '${s ~/ 10000}年${(s ~/ 100) % 100}月${s % 100}日 · 单次';
+  }
+  return '${s ~/ 10000}年${(s ~/ 100) % 100}月${s % 100}日'
+      '–${(e ~/ 100) % 100}月${e % 100}日 · 每天';
 }
 
 /// 展示工具（页面用）
