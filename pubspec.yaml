@@ -1,7 +1,7 @@
 name: trinity
 description: "三位一体 v4 - 日记本 + 备忘录 + 日程时间表"
 publish_to: "none"
-version: 4.5.0+21
+version: 4.6.0+22
 
 environment:
   sdk: ">=3.2.0 <4.0.0"

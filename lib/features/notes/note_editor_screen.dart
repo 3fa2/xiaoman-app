@@ -222,7 +222,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
                     controller: _title,
                     style: AppType.title.copyWith(color: p.onSurface),
                     decoration: const InputDecoration(
-                      labelText: '标题',
+                      hintText: '标题（可不填）',
+                      floatingLabelBehavior: FloatingLabelBehavior.never,
                       filled: false,
                       fillColor: Colors.transparent,
                       border: InputBorder.none,
@@ -426,14 +427,19 @@ class _TodoSection extends ConsumerWidget {
                     labelText: '添加待办，回车确认',
                   ),
                   style: AppType.body.copyWith(color: p.onSurface),
-                  onSubmitted: (v) {
+                  onSubmitted: (v) async {
                     if (v.trim().isEmpty) return;
-                    if (noteId != null) {
-                      repo.addTodo(noteId: noteId!, text: v.trim());
-                    } else {
-                      onAddFirst?.call(v.trim());
-                    }
                     todoCtrl.clear();
+                    if (noteId != null) {
+                      await repo.addTodo(noteId: noteId!, text: v.trim());
+                    } else {
+                      try {
+                        await onAddFirst?.call(v.trim());
+                      } catch (_) {
+                        // 失败不吞到 UI 级别：恢复输入让用户重试
+                        todoCtrl.text = v;
+                      }
+                    }
                   },
                 ),
               ),

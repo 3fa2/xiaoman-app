@@ -90,10 +90,15 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
                   stream: diaries,
                   builder: (context, snap) {
                     final list = snap.data ?? const <Diary>[];
-                    final moodByDay = <int, Mood?>{
-                      for (final d in list)
-                        d.dateDay: d.moodId == null ? null : moodMap[d.moodId!],
-                    };
+                    // 按天分组：有日记就标记点（有心情用心情色，无心情用灰点）
+                    final diariesByDay = <int, List<Diary>>{};
+                    final moodByDay = <int, Mood?>{};
+                    for (final d in list) {
+                      diariesByDay.putIfAbsent(d.dateDay, () => []).add(d);
+                      if (d.moodId != null && moodByDay[d.dateDay] == null) {
+                        moodByDay[d.dateDay] = moodMap[d.moodId!];
+                      }
+                    }
                     return TableCalendar<int>(
                       firstDay: DateTime(2000),
                       lastDay: DateTime(2100),
@@ -145,12 +150,17 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
                       ),
                       calendarBuilders: CalendarBuilders(
                         markerBuilder: (context, date, events) {
-                          final mood = moodByDay[_dayOf(date)];
-                          if (mood == null) return null;
+                          final day = _dayOf(date);
+                          final diaries = diariesByDay[day];
+                          if (diaries == null || diaries.isEmpty) return null;
+                          // 有日记就显示点：有心情→心情色点，无心情→灰色小点
+                          final mood = moodByDay[day];
                           return Positioned(
                             bottom: 4,
                             child: MoodDot(
-                              color: MoodPalette.colorOf(mood.hue, dark: dark),
+                              color: mood != null
+                                  ? MoodPalette.colorOf(mood.hue, dark: dark)
+                                  : p.onSurfaceVariant,
                               size: 6,
                             ),
                           );

@@ -1,18 +1,27 @@
-﻿package com.xiaoman.app
+package com.xiaoman.app
 
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 // local_auth 要求宿主为 FlutterFragmentActivity，否则抛 no_fragment_activity 致生物识别不可用。
 class MainActivity : FlutterFragmentActivity() {
+
+    private var pendingResult: MethodChannel.Result? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // 闹钟通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "trinity/alarms")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -50,5 +59,49 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // 备份导入通道：SAF 选 JSON 文件 + 读 content URI
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "trinity/backup")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "pickJsonFile" -> {
+                        pendingResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                        }
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, 1001)
+                    }
+                    "readFile" -> {
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr == null) { result.error("no_uri", "missing uri", null); return@setMethodCallHandler }
+                        try {
+                            val uri = Uri.parse(uriStr)
+                            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            if (bytes != null) result.success(bytes) else result.error("read_failed", "null", null)
+                        } catch (e: Exception) {
+                            result.error("read_failed", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            val r = pendingResult
+            pendingResult = null
+            if (r == null) return
+            if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                r.success(data.data.toString())
+            } else {
+                r.success(null)
+            }
+        }
     }
 }

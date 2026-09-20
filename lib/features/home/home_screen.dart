@@ -198,29 +198,43 @@ class _BlockRow extends StatelessWidget {
   }
 }
 
-class _MoodCheckin extends ConsumerWidget {
+class _MoodCheckin extends ConsumerStatefulWidget {
   const _MoodCheckin({required this.moods, required this.diaries});
 
   final Stream<List<Mood>> moods;
   final Stream<List<Diary>> diaries;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MoodCheckin> createState() => _MoodCheckinState();
+}
+
+class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
+  /// 0=今天, 1=昨天（可补昨天的心情）
+  int _dayOffset = 0;
+
+  int _dayKey(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
+
+  @override
+  Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final p = Theme.of(context).colorScheme;
     return StreamBuilder<List<Mood>>(
-      stream: moods,
+      stream: widget.moods,
       builder: (context, moodSnap) {
         final moods = moodSnap.data ?? const <Mood>[];
         return StreamBuilder<List<Diary>>(
-          stream: diaries,
+          stream: widget.diaries,
           builder: (context, snap) {
             final all = snap.data ?? const <Diary>[];
-            final today = DateTime.now();
-            final todayDay =
-                today.year * 10000 + today.month * 100 + today.day;
-            final todays = all.where((d) => d.dateDay == todayDay).toList();
-            // 同日多篇：取最新创建且带心情的一篇作为"当日心情"（否则打卡态不稳定）
-            final withMood = todays.where((d) => d.moodId != null).toList()
+            final now = DateTime.now();
+            final targetDate = now.subtract(Duration(days: _dayOffset));
+            final targetDay = _dayKey(targetDate);
+            final targetDiaries =
+                all.where((d) => d.dateDay == targetDay).toList();
+            // 同日多篇：取最新创建且带心情的一篇作为"当日心情"
+            final withMood = targetDiaries
+                .where((d) => d.moodId != null)
+                .toList()
               ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
             final current =
                 withMood.isEmpty ? null : withMood.first.moodId;
@@ -229,6 +243,32 @@ class _MoodCheckin extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 今天/昨天切换
+                  Row(
+                    children: [
+                      _DayToggle(
+                        label: '今天',
+                        selected: _dayOffset == 0,
+                        onTap: () => setState(() => _dayOffset = 0),
+                      ),
+                      const SizedBox(width: AppSpacing.s8),
+                      _DayToggle(
+                        label: '昨天',
+                        selected: _dayOffset == 1,
+                        onTap: () => setState(() => _dayOffset = 1),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _dayOffset == 0
+                            ? '今日心情'
+                            : '补昨天心情',
+                        style: AppType.caption.copyWith(
+                          color: p.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.s8),
                   _MoodWeekStrip(
                     diaries: all,
                     moods: moods,
@@ -245,11 +285,12 @@ class _MoodCheckin extends ConsumerWidget {
                           selected: current == m.id,
                           dark: dark,
                           onTap: () async {
-                            final diaryId =
-                                todays.isEmpty ? null : todays.first.id;
+                            final diaryId = targetDiaries.isEmpty
+                                ? null
+                                : targetDiaries.first.id;
                             final repo = ref.read(diaryRepoProvider);
                             if (diaryId == null) {
-                              // 今日无日记：先建一条，只记心情
+                              // 当日无日记：先建一条，只记心情
                               final id = await repo.save(
                                 id: null,
                                 title: '',
@@ -273,6 +314,45 @@ class _MoodCheckin extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// 今天/昨天切换小按钮
+class _DayToggle extends StatelessWidget {
+  const _DayToggle({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: MotionDuration.fast,
+        curve: MotionCurve.standard,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s12, vertical: AppSpacing.s4,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? p.primary : p.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadii.rSm),
+        ),
+        child: Text(
+          label,
+          style: AppType.label.copyWith(
+            color: selected ? p.onPrimary : p.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.w600 : null,
+          ),
+        ),
+      ),
     );
   }
 }

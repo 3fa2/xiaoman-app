@@ -3,13 +3,29 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '220ae614-4506-4ec8-8b3b-f11ddf8803b0'
-  PropagateID: '220ae614-4506-4ec8-8b3b-f11ddf8803b0'
-  ReservedCode1: 'efae16d8-2c12-43ab-b353-26a9c9ffa535'
-  ReservedCode2: 'efae16d8-2c12-43ab-b353-26a9c9ffa535'
+  ProduceID: '1396284a-b95e-4803-a7bc-5d76825fe266'
+  PropagateID: '1396284a-b95e-4803-a7bc-5d76825fe266'
+  ReservedCode1: '90e16d80-ec69-46c7-a5c7-88ff7733a526'
+  ReservedCode2: '90e16d80-ec69-46c7-a5c7-88ff7733a526'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v4.6.0+22（2026-09-20）· 导入数据 + 四项真机反馈修复
+
+- **设置页新增「导入数据」**：原来只有导出没有导入，换机/重装后备份文件进不来
+  - 走 Android SAF 系统文件选择器选 JSON 备份（零新依赖，MainActivity 加 trinity/backup MethodChannel：pickJsonFile/readFile）
+  - 导入核心 `importFromJsonString`（可测纯方法）：清 11 表 → `Row.fromJson + insertOnConflictUpdate` 覆盖恢复 → FTS rebuild（清表后触发器不回填索引，必须手动 rebuild）→ 返回日记/笔记/日程条数统计
+  - 导入前弹确认框（明示"会覆盖当前数据"），完成后 SnackBar 显示统计
+  - **心情种子防丢**：旧备份/手改 JSON 缺 moods 键时心情表会被清空 → 导入后 moods 为空自动重播种 8 个预设（AppDatabase 新增 seedMoodsIfEmpty）
+  - 新增 2 个回归测试：roundtrip（导出结构 JSON → 弄脏库 → 导入 → 数据完整 + FTS 可搜 + 脏数据消失）、空 JSON 容错
+- **备忘编辑器标题被裁切**：同 v4.3.1 日记编辑器同款问题——浮动 label 配 InputBorder.none 被输入框上边缘裁切 → 改 hint「标题（可不填）」+ never
+- **待办清单加不进**：onSubmitted 里 async 未 await，输入框清了但条目没落库 → 改 async + await + 失败恢复输入
+- **日历点标识按日记有无**：原来所有日期都画点；现在有日记才显示（有心情→心情色，无心情→灰点），无日记不显示
+- **首页心情打卡支持补昨天**：打卡组件加「今天/昨天」切换，昨天忘打卡可补
+- 备注：用户反馈"备忘页 FAB 重叠+半个'备'字"经代码检查为正常（note_list 只有一个 FAB），疑似手机上是旧版本，待装机验证
+
+测试 53/53 全过（新增 2）；版本 4.6.0+22（pubspec + local.properties 同步）
 
 ## v4.5.0+21（2026-09-20）· 定名「小满」+ 换包名 + 换图标
 

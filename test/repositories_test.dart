@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trinity/data/db/database.dart';
+import 'package:trinity/data/services/backup_service.dart';
 import 'package:trinity/data/repositories/diary_repository.dart';
 import 'package:trinity/data/repositories/media_repository.dart';
 import 'package:trinity/data/repositories/note_repository.dart';
@@ -370,6 +373,170 @@ void main() {
       final impl = SettingsRepositoryImpl(db);
       await impl.set('theme_mode', 'dark');
       expect(await impl.get('theme_mode'), 'dark');
+    });
+  });
+
+  group('BackupService 导入', () {
+    /// 构造与 exportAllJson 输出同构的 JSON（不经文件系统，测试可直接驱动）
+    Future<String> buildExportLikeJson() async {
+      final data = <String, dynamic>{
+        'schemaVersion': db.schemaVersion,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'diaries': (await db.select(db.diaries).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'diaryNotebooks': (await db.select(db.diaryNotebooks).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'moods': (await db.select(db.moods).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'mediaItems': (await db.select(db.mediaItems).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'notebooks': (await db.select(db.notebooks).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'notes': (await db.select(db.notes).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'todoItems': (await db.select(db.todoItems).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'scheduleTemplates': (await db.select(db.scheduleTemplates).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'scheduleInstances': (await db.select(db.scheduleInstances).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'drafts': (await db.select(db.drafts).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'settings': (await db.select(db.settings).get())
+            .map((r) => r.toJson())
+            .toList(),
+      };
+      return jsonEncode(data);
+    }
+
+    test('roundtrip：导出结构 JSON → 覆盖导入 → 数据完整 + FTS 可搜', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      final noteRepo = NoteRepositoryImpl(db);
+      final schedRepo = ScheduleRepositoryImpl(db);
+      final settingsRepo = SettingsRepositoryImpl(db);
+
+      // 1. 建全量数据：日记(本+心情+标签)、笔记(标签+置顶+待办)、日程、草稿、设置
+      final nbId = await diaryRepo.saveDiaryNotebook(
+        id: null, name: '碎碎念', colorIndex: 1,
+      );
+      final dId = await diaryRepo.save(
+        id: null, title: '旅行日记', content: '海边看日出', extra: null,
+      );
+      final moods = await diaryRepo.watchMoods().first;
+      await diaryRepo.setMood(diaryId: dId, moodId: moods.first.id);
+      await diaryRepo.setNotebook(diaryId: dId, notebookId: nbId);
+      await diaryRepo.setTags(diaryId: dId, tags: ['旅行']);
+
+      await noteRepo.saveNotebook(id: null, name: '灵感', colorIndex: 2);
+      final nbs = await noteRepo.watchNotebooks().first;
+      final nId = await noteRepo.saveNote(
+        id: null, notebookId: nbs.first.id, title: '量化笔记',
+        content: '动量因子回测', tags: ['投资'], pinned: true,
+      );
+      await noteRepo.addTodo(noteId: nId, text: '复测2023数据');
+
+      await schedRepo.saveInstance(
+        id: null, templateId: null, dateDay: 20260920,
+        startMinutes: 540, durationMinutes: 90,
+        title: '晨会', description: '', colorIndex: 1,
+        detachOnEdit: false, remindMinutesBefore: 15,
+      );
+      await settingsRepo.set('theme_mode', 'dark');
+      await diaryRepo.saveDraft(
+        ownerType: MediaOwner.diary, ownerId: -1, payload: '{"title":"x"}',
+      );
+
+      // 2. 导出同构 JSON
+      final json = await buildExportLikeJson();
+
+      // 3. 弄脏库：导入后这些应该全部消失（覆盖恢复语义）
+      await diaryRepo.save(
+        id: null, title: '脏数据', content: '会被覆盖掉', extra: null,
+      );
+      await noteRepo.saveNotebook(id: null, name: '脏本', colorIndex: 0);
+      await schedRepo.saveInstance(
+        id: null, templateId: null, dateDay: 20260921,
+        startMinutes: 600, durationMinutes: 30,
+        title: '脏日程', description: '', colorIndex: 0,
+        detachOnEdit: false, remindMinutesBefore: 0,
+      );
+
+      // 4. 导入
+      final backup = BackupServiceImpl(db);
+      final stat = await backup.importFromJsonString(json);
+      expect(stat.diaries, 1);
+      expect(stat.notes, 1);
+      expect(stat.schedules, 1);
+
+      // 5. 日记回来：标题/标签/心情/归属本
+      final d = await diaryRepo.getById(dId);
+      expect(d!.title, '旅行日记');
+      expect(d.tags, ['旅行']);
+      expect(d.moodId, moods.first.id);
+      expect(d.notebookId, nbId);
+
+      // 6. 脏数据被清
+      final titles = (await db.select(db.diaries).get())
+          .map((r) => r.title)
+          .toList();
+      expect(titles, isNot(contains('脏数据')));
+      expect(
+        (await db.select(db.scheduleInstances).get())
+            .map((r) => r.title)
+            .toList(),
+        isNot(contains('脏日程')),
+      );
+
+      // 7. FTS rebuild 生效：清表后触发器不回填，全靠 rebuild 找回索引
+      expect((await db.searchDiaries('海边看日出')).length, 1);
+      expect((await db.searchNotes('动量因子')).length, 1);
+
+      // 8. 笔记回来：标签/置顶/待办
+      final note = await noteRepo.getNoteById(nId);
+      expect(note!.title, '量化笔记');
+      expect(note.tags, ['投资']);
+      expect(note.pinned, isTrue);
+      final todos = await noteRepo.watchTodos(nId).first;
+      expect(todos.length, 1);
+      expect(todos.first.text, '复测2023数据');
+
+      // 9. 日程/心情种子/草稿/设置都回来
+      final day = await schedRepo.watchDay(20260920).first;
+      expect(day.length, 1);
+      expect(day.first.title, '晨会');
+      expect((await diaryRepo.watchMoods().first).length, 8);
+      final draft = await diaryRepo.findDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+      );
+      expect(draft, isNotNull);
+      expect(await settingsRepo.get('theme_mode'), 'dark');
+    });
+
+    test('空 JSON（缺表键）→ 清空不炸 + 心情种子自动补回', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      await diaryRepo.save(
+        id: null, title: '旧数据', content: 'x', extra: null,
+      );
+      final backup = BackupServiceImpl(db);
+      final stat = await backup.importFromJsonString('{}');
+      expect(stat.diaries, 0);
+      expect(stat.notes, 0);
+      expect(stat.schedules, 0);
+      expect(await db.select(db.diaries).get(), isEmpty);
+      // moods 不在 JSON 里 → 种子自动补回 8 个，心情打卡不至于没得选
+      expect((await diaryRepo.watchMoods().first).length, 8);
+      // FTS rebuild 对空表不炸
+      expect(await db.searchDiaries('随便搜'), isEmpty);
     });
   });
 }

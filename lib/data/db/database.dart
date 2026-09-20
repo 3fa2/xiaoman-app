@@ -86,6 +86,14 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// 供备份导入后调用：moods 为空时重新播种预设（防旧备份缺 moods 清掉心情体系）
+  Future<void> seedMoodsIfEmpty() async {
+    final existing = await select(moods).get();
+    if (existing.isEmpty) {
+      await _seedMoods();
+    }
+  }
+
   static const _ftsTriggers = <String>[
     'CREATE TRIGGER IF NOT EXISTS diaries_ai AFTER INSERT ON diaries BEGIN '
         "INSERT INTO diaries_fts(rowid, content, title) VALUES (new.id, new.content, new.title); END",

@@ -179,28 +179,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.block),
           const SectionHeader('备份'),
           Card(
-            child: ListTile(
-              leading: PhosphorIcon(
-                PhosphorIconsRegular.export,
-                color: p.onSurfaceVariant,
-              ),
-              title: Text(
-                '导出全部数据（JSON）',
-                style: AppType.body.copyWith(color: p.onSurface),
-              ),
-              subtitle: Text(
-                '日记、备忘、日程、心情，分享到任意应用保存',
-                style: AppType.caption.copyWith(color: p.onSurfaceVariant),
-              ),
-              onTap: () async {
-                await ref.read(backupProvider).shareBackup();
-              },
+            child: Column(
+              children: [
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.export,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '导出全部数据（JSON）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '日记、备忘、日程、心情，分享到任意应用保存',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  onTap: () async {
+                    await ref.read(backupProvider).shareBackup();
+                  },
+                ),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.downloadSimple,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '导入数据（恢复备份）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '从 JSON 备份文件恢复，会覆盖当前数据',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  onTap: () => _importData(context, ref),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: AppSpacing.block),
           Center(
             child: Text(
-              '三位一体 v4.0.0 · 本地数据，不联网',
+              '小满 v4.6.0 · 本地数据，不联网',
               style: AppType.caption.copyWith(color: p.onSurfaceVariant),
             ),
           ),
@@ -274,6 +293,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await repo.set('lock_pin_hash', '');
     }
     _check();
+  }
+
+  Future<void> _importData(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmSheet(
+      context,
+      title: '导入数据会覆盖当前内容',
+      message: '当前所有日记、备忘、日程会被替换为备份文件里的内容，无法撤销',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在导入…')),
+    );
+
+    try {
+      final result = await ref.read(backupProvider).importFromJsonFile();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '导入完成：${result.diaries} 篇日记、${result.notes} 条备忘、${result.schedules} 个日程',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败：$e')),
+        );
+      }
+    }
   }
 }
 
