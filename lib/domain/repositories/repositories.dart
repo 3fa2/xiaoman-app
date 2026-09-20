@@ -51,6 +51,7 @@ abstract interface class DiaryRepository implements EditorRepository {
   Future<List<Diary>> search(String query); // FTS5，<3 字回退 LIKE
   Stream<List<Mood>> watchMoods();
   Future<int> addMood(String name, double hue);
+  Future<void> deleteMood(int id); // 仅自定义心情（isPreset=false），引用先置空
   Future<List<(Diary, Mood?)>> watchWithMoodRange(int fromDay, int toDay);
 
   // ---- 日记本（v4.3 自建分类）----

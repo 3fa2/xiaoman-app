@@ -32,7 +32,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   Future<void> _tryBiometric() async {
     try {
       final ok = await _auth.authenticate(
-        localizedReason: '解锁三位一体',
+        localizedReason: '解锁小满',
         options: const AuthenticationOptions(biometricOnly: false),
       );
       if (ok && mounted) _unlock();

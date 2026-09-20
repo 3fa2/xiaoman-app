@@ -170,7 +170,7 @@ class NotificationService {
     if (!_inited) await init();
     await _plugin.show(
       999999,
-      '三位一体 · 测试提醒',
+      '小满 · 测试提醒',
       '如果你看到这条通知，说明日程提醒渠道正常',
       const NotificationDetails(
         android: AndroidNotificationDetails(

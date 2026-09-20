@@ -276,6 +276,16 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
           );
 
   @override
+  Future<void> deleteMood(int id) async {
+    // 无 FK 约束，手动保证一致：先解除日记引用，再删行（预设行拒绝删除）
+    await (_db.update(_db.diaries)..where((d) => d.moodId.equals(id)))
+        .write(const DiariesCompanion(moodId: Value(null)));
+    await (_db.delete(_db.moods)
+          ..where((m) => m.id.equals(id) & m.isPreset.equals(false)))
+        .go();
+  }
+
+  @override
   Future<List<(Diary, Mood?)>> watchWithMoodRange(
     int fromDay,
     int toDay,

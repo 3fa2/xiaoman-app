@@ -125,7 +125,7 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
     final themeMode = ref.watch(themeModeProvider);
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
-      title: '三位一体',
+      title: '小满',
       theme: buildAppTheme(lightPalette, dark: false),
       darkTheme: buildAppTheme(darkPalette, dark: true),
       themeMode: themeMode,

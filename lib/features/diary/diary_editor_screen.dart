@@ -694,46 +694,63 @@ class _MoodRow extends StatelessWidget {
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
-      builder: (ctx) => StreamBuilder<List<Mood>>(
-        stream: moods,
-        builder: (context, snap) {
-          final list = snap.data ?? const <Mood>[];
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '今天的心情',
-                  style: AppType.headline.copyWith(
-                    color: Theme.of(ctx).colorScheme.onSurface,
+      builder: (ctx) => Consumer(
+        builder: (context, ref, _) => StreamBuilder<List<Mood>>(
+          stream: moods,
+          builder: (context, snap) {
+            final list = snap.data ?? const <Mood>[];
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '今天的心情',
+                    style: AppType.headline.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.s16),
-                Wrap(
-                  spacing: AppSpacing.s8,
-                  runSpacing: AppSpacing.s8,
-                  children: [
-                    for (final m in list)
-                      _MoodPickChip(
-                        mood: m,
-                        selected: moodId == m.id,
-                        dark: dark,
-                        onTap: () {
-                          onPick(moodId == m.id ? null : m.id);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: AppSpacing.s16),
+                  Wrap(
+                    spacing: AppSpacing.s8,
+                    runSpacing: AppSpacing.s8,
+                    children: [
+                      for (final m in list)
+                        _MoodPickChip(
+                          mood: m,
+                          selected: moodId == m.id,
+                          dark: dark,
+                          onTap: () {
+                            onPick(moodId == m.id ? null : m.id);
+                            Navigator.pop(ctx);
+                          },
+                          onLongPress: m.isPreset
+                              ? null
+                              : () async {
+                                  final ok = await showConfirmSheet(
+                                    ctx,
+                                    title: '删除心情「${m.name}」？',
+                                    message: '已用它打卡的日记会变成无心情',
+                                  );
+                                  if (ok) {
+                                    await ref
+                                        .read(diaryRepoProvider)
+                                        .deleteMood(m.id);
+                                  }
+                                },
+                        ),
+                      _MoodAddChip(dark: dark),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -789,12 +806,130 @@ class _MoodRow extends StatelessWidget {
   }
 }
 
+/// 自定义心情入口 chip → 表单（名字 + 12 色点选 hue）→ addMood
+class _MoodAddChip extends ConsumerWidget {
+  const _MoodAddChip({required this.dark});
+
+  final bool dark;
+
+  Future<void> _save(
+    BuildContext ctx,
+    WidgetRef ref,
+    TextEditingController nameCtrl,
+    double hue,
+  ) async {
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    await ref.read(diaryRepoProvider).addMood(name, hue);
+    if (ctx.mounted) Navigator.pop(ctx);
+  }
+
+  Future<void> _openForm(BuildContext context, WidgetRef ref) async {
+    final p = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController();
+    var hue = MoodPalette.customHues.first;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.page, 0, AppSpacing.page,
+            AppSpacing.s24 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '自定义心情',
+                style: AppType.headline.copyWith(color: p.onSurface),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '心情名，如：充实、上头',
+                ),
+                onSubmitted: (_) => _save(ctx, ref, nameCtrl, hue),
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              Wrap(
+                spacing: AppSpacing.s8,
+                runSpacing: AppSpacing.s8,
+                children: [
+                  for (final h in MoodPalette.customHues)
+                    GestureDetector(
+                      onTap: () => setSheet(() => hue = h),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: MoodPalette.colorOf(h, dark: dark),
+                          border: hue == h
+                              ? Border.all(color: p.primary, width: 2.5)
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s24),
+              FilledButton(
+                onPressed: () => _save(ctx, ref, nameCtrl, hue),
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    return PressableScale(
+      onTap: () => _openForm(context, ref),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s12, vertical: AppSpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: p.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadii.rSm),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+              PhosphorIconsRegular.plus,
+              size: 16,
+              color: p.onSurfaceVariant,
+            ),
+            const SizedBox(width: AppSpacing.s4),
+            Text(
+              '自定义',
+              style: AppType.label.copyWith(color: p.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MoodPickChip extends StatelessWidget {
   const _MoodPickChip({
     required this.mood,
     required this.selected,
     required this.dark,
     required this.onTap,
+    this.onLongPress,
   });
 
   final Mood mood;
@@ -802,11 +937,15 @@ class _MoodPickChip extends StatelessWidget {
   final bool dark;
   final VoidCallback onTap;
 
+  /// 长按删除自定义心情（预设不提供）
+  final VoidCallback? onLongPress;
+
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
     return PressableScale(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: AnimatedScale(
         scale: selected ? 1.12 : 1,
         duration: MotionDuration.base,

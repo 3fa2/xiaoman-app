@@ -159,7 +159,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       const SizedBox(height: AppSpacing.s8),
                       Text(
-                        '1. 设置 → 应用 → 三位一体 → 自启动：允许\n'
+                        '1. 设置 → 应用 → 小满 → 自启动：允许\n'
                         '2. 电池 → 后台耗电：允许后台高耗电\n'
                         '3. 电池 → 不受限制（或「无限制」）\n'
                         '4. 多任务卡片下拉 → 锁定\n'

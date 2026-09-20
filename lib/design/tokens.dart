@@ -123,7 +123,11 @@ abstract final class AppType {
   );
 }
 
-/// 心情色：8 个预设（语义 + 色相），饱和度统一 0.32。
+/// 心情色：8 个预设（语义 + 色相），饱和度统一 0.40。
+///
+/// v4.7.0：hue 重排拉开区分度（旧版平静 175/难过 210/疲惫 220 三个挤在蓝青区），
+/// 饱和度 0.32→0.40 让颜色更鲜明。⚠️ 种子同步维护在 database.dart _seedMoods，
+/// schema v3→v4 迁移按名字刷新已有库的预设行，两处 + 迁移共三处同步改。
 ///
 /// 使用边界（必须遵守）：
 /// 1. 只在 MoodPicker / MoodChip / MoodDot / 趋势图里用
@@ -131,18 +135,25 @@ abstract final class AppType {
 /// 3. 列表里心情只用一个小圆点 + 文字，不做整行染色
 abstract final class MoodPalette {
   static const presets = <(String, double)>[
-    ('开心', 45), ('平静', 175), ('期待', 150), ('感动', 330),
-    ('疲惫', 220), ('难过', 210), ('焦虑', 265), ('生气', 8),
+    ('开心', 50), ('期待', 130), ('平静', 190), ('感动', 330),
+    ('疲惫', 260), ('难过', 215), ('焦虑', 25), ('生气', 0),
   ];
 
   static Color colorOf(double hue, {required bool dark}) =>
-      HSLColor.fromAHSL(1, hue, 0.32, dark ? 0.52 : 0.60).toColor();
+      HSLColor.fromAHSL(1, hue, 0.40, dark ? 0.56 : 0.62).toColor();
+
+  /// 自定义心情的选色盘：色环均布 12 个色相
+  static const customHues = <double>[
+    0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330,
+  ];
 }
 
-/// 笔记本色 / 日记本色：8 + null（跟 primary），饱和度全部 <= 30%。
+/// 笔记本色 / 日记本色：16 + null（跟 primary），饱和度 <= 35%。
+/// v4.7.0：从 9 色扩到 16 色。⚠️ 只允许尾部追加——colorIndex 按下标存库，
+/// 重排会错位已有数据。
 /// 只在卡片色点/色板选择器里用。
 abstract final class NotebookPalette {
-  /// 0 = null（跟 primary），1-7 为预设
+  /// 0 = null（跟 primary），1-15 为预设
   static const presets = <Color?>[
     null,
     Color(0xFF7C93A8), // 雾蓝灰
@@ -153,6 +164,14 @@ abstract final class NotebookPalette {
     Color(0xFFA89080), // 陶棕
     Color(0xFF7E97A0), // 灰青
     Color(0xFF9B8F7C), // 橄榄
+    // ---- v4.7.0 追加（色相环补空缺区）----
+    Color(0xFFB07F72), // 珊瑚
+    Color(0xFFB2955A), // 琥珀
+    Color(0xFF6FA285), // 松绿
+    Color(0xFF79A5A0), // 湖绿
+    Color(0xFF6E93BD), // 天蓝
+    Color(0xFF8D85B5), // 紫藤
+    Color(0xFFA87F8F), // 玫瑰
   ];
 
   static Color resolve(int index, {required bool dark}) {

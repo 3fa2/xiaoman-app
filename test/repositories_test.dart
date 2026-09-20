@@ -84,6 +84,29 @@ void main() {
       expect(r.first.title, '旅行');
     });
 
+    test('自定义心情：addMood 落库 + deleteMood 解除引用 + 预设拒绝删', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final customId = await repo.addMood('充实', 210.0);
+      var moods = await repo.watchMoods().first;
+      expect(moods.length, 9);
+      final custom = moods.firstWhere((m) => m.id == customId);
+      expect(custom.isPreset, isFalse);
+      expect(custom.name, '充实');
+
+      // 用自定义心情打卡，再删除 → 日记引用置空、心情消失
+      final dId = await repo.save(id: null, title: 't', content: 'c', extra: null);
+      await repo.setMood(diaryId: dId, moodId: customId);
+      await repo.deleteMood(customId);
+      expect((await repo.getById(dId))!.moodId, isNull);
+      moods = await repo.watchMoods().first;
+      expect(moods.length, 8);
+
+      // 预设行拒绝删除（isPreset=false 条件过滤）
+      final preset = moods.first;
+      await repo.deleteMood(preset.id);
+      expect((await repo.watchMoods().first).length, 8);
+    });
+
     test('日记本：建本 + 归属过滤 + 删除本后日记变未归本', () async {
       final repo = DiaryRepositoryImpl(db);
       final nbId = await repo.saveDiaryNotebook(

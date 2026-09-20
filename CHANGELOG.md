@@ -3,13 +3,24 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '1396284a-b95e-4803-a7bc-5d76825fe266'
-  PropagateID: '1396284a-b95e-4803-a7bc-5d76825fe266'
-  ReservedCode1: '90e16d80-ec69-46c7-a5c7-88ff7733a526'
-  ReservedCode2: '90e16d80-ec69-46c7-a5c7-88ff7733a526'
+  ProduceID: 'c21bb3c2-0cd2-4f25-8407-f7f99b7e11b1'
+  PropagateID: 'c21bb3c2-0cd2-4f25-8407-f7f99b7e11b1'
+  ReservedCode1: '8db9bb30-b9b6-4fac-9dae-d226310ae76b'
+  ReservedCode2: '8db9bb30-b9b6-4fac-9dae-d226310ae76b'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v4.7.0+23（2026-09-20）· 后台名字修正 + 颜色扩充 + 自定义心情
+
+- **后台任务名字改「小满」**：最近任务/后台卡片一直显示"三位一体"——Flutter 把 MaterialApp.title 设为 Android 任务描述（TaskDescription），Manifest label 改了但 title 漏了 → main.dart title 改"小满"。顺带清理其余残留：测试提醒通知标题、生物识别解锁理由、设置页自启动指引、pubspec description
+- **笔记本/日记本色板 9 → 16 色**：低饱和基调不变，补齐色相环空缺区（珊瑚/琥珀/松绿/湖绿/天蓝/紫藤/玫瑰）。只尾部追加——colorIndex 按下标存库，重排会错位已有数据；日记本和备忘笔记本两处色板选择器自动跟随
+- **心情颜色重排 + 饱和度提升**：旧版平静 175/难过 210/疲惫 220 三个 hue 挤在蓝青区几乎分不清 → 重排为色环均布（开心 50 金黄/期待 130 绿/平静 190 青/感动 330 玫粉/疲惫 260 蓝紫/难过 215 蓝/焦虑 25 橙/生气 0 红），饱和度 0.32→0.40 更鲜明
+  - schemaVersion 3→4 迁移按名字刷新已有库的预设心情 hue，升级后立即生效（无需重装）
+- **自定义心情**：心情弹窗新增"＋ 自定义"入口——输入名字 + 12 色点选色相 → addMood（isPreset=false 排在预设后面）；长按自定义心情可删除（先解除日记引用再删行，预设行拒绝删除）
+- 备注：用户报的"备忘的子备忘加备忘没反应"经代码复核为 v4.6.0 已修问题（onSubmitted async + await + 失败恢复输入），本轮代码未再改动，待装 v4.6.0+ 新包验证
+
+测试 54/54 全过（新增 1：addMood/deleteMood 引用置空/预设保护）；analyze 0 error/0 warning（11 条历史 info）；版本 4.7.0+23
 
 ## v4.6.0+22（2026-09-20）· 导入数据 + 四项真机反馈修复
 

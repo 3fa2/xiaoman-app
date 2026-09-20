@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -51,6 +51,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(diaryNotebooks);
             await m.addColumn(diaries, diaries.notebookId);
           }
+          // v3 → v4：预设心情 hue 重排（v4.7.0，旧版三色挤蓝青区难分辨）
+          if (from < 4) {
+            await _refreshPresetMoodHues();
+          }
         },
       );
 
@@ -71,8 +75,8 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> _seedMoods() async {
     const presets = <(String, double)>[
-      ('开心', 45), ('平静', 175), ('期待', 150), ('感动', 330),
-      ('疲惫', 220), ('难过', 210), ('焦虑', 265), ('生气', 8),
+      ('开心', 50), ('期待', 130), ('平静', 190), ('感动', 330),
+      ('疲惫', 260), ('难过', 215), ('焦虑', 25), ('生气', 0),
     ];
     for (var i = 0; i < presets.length; i++) {
       await into(moods).insert(
@@ -83,6 +87,20 @@ class AppDatabase extends _$AppDatabase {
           sortOrder: i,
         ),
       );
+    }
+  }
+
+  /// v3 → v4：按名字刷新预设行的 hue（设计真源在 tokens.dart MoodPalette.presets，
+  /// 三处同步：这里种子、迁移、tokens.dart）
+  Future<void> _refreshPresetMoodHues() async {
+    const hues = <(String, double)>[
+      ('开心', 50), ('期待', 130), ('平静', 190), ('感动', 330),
+      ('疲惫', 260), ('难过', 215), ('焦虑', 25), ('生气', 0),
+    ];
+    for (final (name, hue) in hues) {
+      await (update(moods)
+            ..where((m) => m.isPreset.equals(true) & m.name.equals(name)))
+          .write(MoodsCompanion(hue: Value(hue)));
     }
   }
 
