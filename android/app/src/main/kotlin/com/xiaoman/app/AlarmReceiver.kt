@@ -1,4 +1,4 @@
-package com.trinity.app
+﻿package com.xiaoman.app
 
 import android.app.Notification
 import android.app.NotificationChannel

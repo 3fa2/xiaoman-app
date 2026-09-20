@@ -1,4 +1,4 @@
-package com.trinity.app
+﻿package com.xiaoman.app
 
 import android.app.AlarmManager
 import android.app.PendingIntent

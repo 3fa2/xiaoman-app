@@ -3,13 +3,24 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'c7b412fe-1345-4b12-9a7b-f464d772ba3d'
-  PropagateID: 'c7b412fe-1345-4b12-9a7b-f464d772ba3d'
-  ReservedCode1: '0a88dc98-ea9d-4954-bb1e-bf322e156789'
-  ReservedCode2: '0a88dc98-ea9d-4954-bb1e-bf322e156789'
+  ProduceID: '220ae614-4506-4ec8-8b3b-f11ddf8803b0'
+  PropagateID: '220ae614-4506-4ec8-8b3b-f11ddf8803b0'
+  ReservedCode1: 'efae16d8-2c12-43ab-b353-26a9c9ffa535'
+  ReservedCode2: 'efae16d8-2c12-43ab-b353-26a9c9ffa535'
 ---
 
-# CHANGELOG — 三位一体 v4
+# CHANGELOG — 小满（原「三位一体」）
+
+## v4.5.0+21（2026-09-20）· 定名「小满」+ 换包名 + 换图标
+
+按《详细方案.md》§1.12 定稿执行（上架备案准备）：
+
+- **应用名**：三位一体 → **小满**（取「满而未满，刚刚好」之意；Manifest label 已改）
+- **包名**：com.trinity.app → **com.xiaoman.app**（applicationId + namespace + Kotlin 目录与 package 声明迁移，4 个 kt 文件；MethodChannel 标识 trinity/alarms 不变，不影响功能）
+  ⚠️ 新旧是两个独立 App：装机后旧「三位一体」需手动卸载，数据不迁移（方案已确认此路径）
+- **图标**：方案定稿图形「几乎满的圆 + 55° 缺口细弧」（雾蓝 #3D6B8E 单色，图形占画布 54% 落在自适应安全区）。5 套 mipmap 密度 + 自适应（anydpi-v26）+ Android 13+ 主题化 monochrome 全套替换，资源来自 E:\DeepSeek\apk\icons\android\（make_android_assets.py 产物，verify_icons.py 几何校验 16 张全过）
+- 版本 4.5.0+21；测试 51/51；APK 验签 CN=Trinity（沿用原密钥，升级兼容性不变）
+- 构建注：pub get 因代理离线失败 → flutter pub get --offline 用本地缓存解析后正常构建
 
 ## v4.4.0+20（2026-09-19）· 实况照片预览从 Dialog 改为页面路由
 

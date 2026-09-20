@@ -1,4 +1,4 @@
-package com.trinity.app
+﻿package com.xiaoman.app
 
 import android.content.Context
 import android.content.SharedPreferences

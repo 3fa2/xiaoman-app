@@ -14,7 +14,7 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.trinity.app"
+    namespace = "com.xiaoman.app"
     compileSdk = 36 // 插件要求（flutter_local_notifications 等）
     ndkVersion = flutter.ndkVersion
 
@@ -26,7 +26,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.trinity.app"
+        applicationId = "com.xiaoman.app"
         minSdk = 26
         targetSdk = 35
         versionCode = flutter.versionCode
