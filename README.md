@@ -175,5 +175,3 @@ lib/
 ## License
 
 [MIT](LICENSE) © 2026
-
-> AI生成
