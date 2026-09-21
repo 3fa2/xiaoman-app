@@ -94,5 +94,3 @@ lib/
 ## License
 
 [MIT](LICENSE)
-
-> AI生成
