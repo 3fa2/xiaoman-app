@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'b7d5871e-2519-4d5c-b91e-b91d0d03acf6'
-  PropagateID: 'b7d5871e-2519-4d5c-b91e-b91d0d03acf6'
-  ReservedCode1: 'ad22bdc6-e7b2-49cc-96a6-4a69309783de'
-  ReservedCode2: 'ad22bdc6-e7b2-49cc-96a6-4a69309783de'
+  ProduceID: '4dd1ea96-5002-4a72-8b6d-80f3b43f3087'
+  PropagateID: '4dd1ea96-5002-4a72-8b6d-80f3b43f3087'
+  ReservedCode1: '10224067-709e-4a02-a768-c5950c17216e'
+  ReservedCode2: '10224067-709e-4a02-a768-c5950c17216e'
 ---
 
 <div align="center">
@@ -121,7 +121,20 @@ flowchart LR
 - **迁移有迹可循**：schema 已迭代 5 个版本（标签列 → 多日记本 → 心情色重排 → 起止日期），全部带自动迁移
 </details>
 
-## 快速开始
+## 下载安装
+
+> [!TIP]
+> **不想自己编译？直接装 APK：**
+>
+> 1. 打开 [Releases 页面](https://github.com/3fa2/xiaoman-app/releases/latest)
+> 2. 下载最新版的 `xiaoman-vX.X.X.apk`
+> 3. 手机上直接安装（Android 8+，无需任何额外权限）
+>
+> :link: 当前版本直链：[xiaoman-v4.8.0.apk](https://github.com/3fa2/xiaoman-app/releases/download/v4.8.0/xiaoman-v4.8.0.apk)（73 MB）
+>
+> 签名证书 `CN=Trinity` 与作者设备一致，以后升级直接覆盖安装，数据不丢。
+
+## 构建
 
 ```bash
 git clone https://github.com/3fa2/xiaoman-app.git
