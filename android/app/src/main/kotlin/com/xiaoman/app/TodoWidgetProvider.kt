@@ -63,8 +63,7 @@ class TodoWidgetProvider4x2 : TodoWidgetBase() {
 
         for (id in appWidgetIds) {
             val v = RemoteViews(context.packageName, R.layout.widget_todo_4x2)
-            v.setTextViewText(R.id.widget_count, if (count > 0) "$count" else "")
-            v.setViewVisibility(R.id.widget_count, if (count > 0) View.VISIBLE else View.GONE)
+            v.setTextViewText(R.id.widget_count, "$count")
             v.setOnClickPendingIntent(R.id.widget_add, addPi)
 
             // 3 条固定行：有数据填充并绑定勾选，无数据隐藏
@@ -73,19 +72,18 @@ class TodoWidgetProvider4x2 : TodoWidgetBase() {
             for (i in rowIds.indices) {
                 if (i < todos.size) {
                     val t = todos[i]
-                    v.setViewVisibility(rowIds[i], View.VISIBLE)
+                    v.setViewVisibility(rowIds[i], android.view.View.VISIBLE)
                     v.setTextViewText(titleIds[i], t.title)
                     v.setOnClickPendingIntent(
                         rowIds[i], togglePi(context, TodoWidgetProvider4x2::class.java, t.id),
                     )
                 } else {
-                    v.setViewVisibility(rowIds[i], View.GONE)
+                    v.setViewVisibility(rowIds[i], android.view.View.GONE)
                 }
             }
             // 空态：一条都没有时显示一句宽慰话
             v.setViewVisibility(
-                R.id.widget_empty,
-                if (todos.isEmpty()) View.VISIBLE else View.GONE,
+                R.id.widget_empty, if (todos.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE,
             )
             v.setOnClickPendingIntent(R.id.widget_root, openPi)
             manager.updateAppWidget(id, v)
@@ -107,7 +105,6 @@ class TodoWidgetProvider2x2 : TodoWidgetBase() {
         for (id in appWidgetIds) {
             val v = RemoteViews(context.packageName, R.layout.widget_todo_2x2)
             v.setTextViewText(R.id.widget_count, "$count")
-            v.setTextViewText(R.id.widget_sub, if (count > 0) "项未完成" else "项 · 全部完成")
             v.setOnClickPendingIntent(R.id.widget_add, addPi)
 
             val rowIds = intArrayOf(R.id.widget_row0, R.id.widget_row1)
@@ -115,13 +112,13 @@ class TodoWidgetProvider2x2 : TodoWidgetBase() {
             for (i in rowIds.indices) {
                 if (i < todos.size) {
                     val t = todos[i]
-                    v.setViewVisibility(rowIds[i], View.VISIBLE)
+                    v.setViewVisibility(rowIds[i], android.view.View.VISIBLE)
                     v.setTextViewText(titleIds[i], t.title)
                     v.setOnClickPendingIntent(
                         rowIds[i], togglePi(context, TodoWidgetProvider2x2::class.java, t.id),
                     )
                 } else {
-                    v.setViewVisibility(rowIds[i], View.GONE)
+                    v.setViewVisibility(rowIds[i], android.view.View.GONE)
                 }
             }
             v.setOnClickPendingIntent(R.id.widget_root, openPi)

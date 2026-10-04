@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 待办小组件 4x2：标题行 + 最多 3 条未完成（点条目勾选）。
-     注意：RemoteViews 布局只支持 TextView/ImageView/LinearLayout 等，
-     裸 View 与 Space 会导致桌面显示 "Problem loading widget"，必须避开。 -->
+<!-- 待办小组件 4x2：大数字头部 + 圆形[+] + 最多 3 条装饰条卡（点条目勾选）。
+     RemoteViews 布局禁用裸 View/Space，全部用白名单控件。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -17,20 +16,20 @@
         android:gravity="center_vertical">
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="待办"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:textColor="@color/widget_ink" />
-
-        <TextView
             android:id="@+id/widget_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:textSize="13sp"
+            android:textSize="30sp"
+            android:textStyle="bold"
             android:textColor="@color/widget_primary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:text="待办"
+            android:textSize="13sp"
+            android:textColor="@color/widget_ink_soft" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -39,19 +38,19 @@
 
         <TextView
             android:id="@+id/widget_add"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/widget_add_bg"
+            android:gravity="center"
             android:text="+"
-            android:textSize="20sp"
+            android:textSize="21sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="2dp"
-            android:textColor="@color/widget_primary" />
+            android:textColor="@color/widget_add_fg" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="10dp" />
+        android:layout_height="12dp" />
 
     <LinearLayout
         android:id="@+id/widget_row0"
@@ -59,24 +58,33 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingBottom="8dp">
+        android:background="@drawable/widget_item_bg"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:paddingTop="9dp"
+        android:paddingBottom="9dp">
 
         <TextView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:text=""
-            android:maxLines="1"
-            android:background="@drawable/widget_check_ring" />
+            android:layout_width="3dp"
+            android:layout_height="14dp"
+            android:background="@drawable/widget_bar" />
 
         <TextView
             android:id="@+id/widget_title0"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:layout_marginStart="9dp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textSize="14sp"
+            android:textSize="13.5sp"
             android:textColor="@color/widget_ink" />
+
+        <TextView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="9dp"
+            android:background="@drawable/widget_check_ring" />
     </LinearLayout>
 
     <LinearLayout
@@ -85,24 +93,34 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingBottom="8dp">
+        android:background="@drawable/widget_item_bg"
+        android:layout_marginTop="7dp"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:paddingTop="9dp"
+        android:paddingBottom="9dp">
 
         <TextView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:text=""
-            android:maxLines="1"
-            android:background="@drawable/widget_check_ring" />
+            android:layout_width="3dp"
+            android:layout_height="14dp"
+            android:background="@drawable/widget_bar" />
 
         <TextView
             android:id="@+id/widget_title1"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:layout_marginStart="9dp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textSize="14sp"
+            android:textSize="13.5sp"
             android:textColor="@color/widget_ink" />
+
+        <TextView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="9dp"
+            android:background="@drawable/widget_check_ring" />
     </LinearLayout>
 
     <LinearLayout
@@ -111,24 +129,34 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingBottom="8dp">
+        android:background="@drawable/widget_item_bg"
+        android:layout_marginTop="7dp"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:paddingTop="9dp"
+        android:paddingBottom="9dp">
 
         <TextView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:text=""
-            android:maxLines="1"
-            android:background="@drawable/widget_check_ring" />
+            android:layout_width="3dp"
+            android:layout_height="14dp"
+            android:background="@drawable/widget_bar" />
 
         <TextView
             android:id="@+id/widget_title2"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:layout_marginStart="9dp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textSize="14sp"
+            android:textSize="13.5sp"
             android:textColor="@color/widget_ink" />
+
+        <TextView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="9dp"
+            android:background="@drawable/widget_check_ring" />
     </LinearLayout>
 
     <TextView

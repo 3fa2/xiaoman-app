@@ -9,8 +9,8 @@ import '../../domain/models/todo.dart';
 import '../shared/widgets.dart';
 import 'todo_add_sheet.dart';
 
-/// 待办主页：筛选（全部/进行中/已过期/今天/最近7）+ 未完成/已完成分区。
-/// v5.0：独立待办（与笔记内清单无关），桌面小组件数据源。
+/// 待办主页（v5.0.2 · 效果图美化）：筛选条 + 未完成（装饰条卡）+ 已完成折叠。
+/// 配色沿用雾蓝体系；形态对齐参考截图：左侧竖条、圆形勾选框、大圆角卡片。
 class TodoScreen extends ConsumerStatefulWidget {
   const TodoScreen({super.key});
 
@@ -20,8 +20,11 @@ class TodoScreen extends ConsumerStatefulWidget {
 
 enum _Filter { all, active, overdue, today, week, done }
 
+enum _SortBy { created, dueDay }
+
 class _TodoScreenState extends ConsumerState<TodoScreen> {
   _Filter _filter = _Filter.all;
+  _SortBy _sortBy = _SortBy.created;
   bool _doneExpanded = false;
 
   static int _today() {
@@ -36,15 +39,72 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('待办'),
+        title: StreamBuilder<List<Todo>>(
+          stream: stream,
+          builder: (context, snap) {
+            final total = (snap.data ?? const <Todo>[]).length;
+            return Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: '待办'),
+                  if (total > 0) ...[
+                    const TextSpan(text: '  '),
+                    TextSpan(
+                      text: '共 $total 条',
+                      style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                    ),
+                  ],
+                ],
+              ),
+              style: AppType.title.copyWith(color: p.onSurface),
+            );
+          },
+        ),
         actions: [
-          IconButton(
-            onPressed: () {},
-            tooltip: '排序（待实现）',
+          PopupMenuButton<_SortBy>(
             icon: PhosphorIcon(
-              PhosphorIconsRegular.arrowsDownUp,
+              PhosphorIconsRegular.dotsThreeVertical,
+              size: 22,
               color: p.onSurfaceVariant,
             ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.rMd),
+            ),
+            onSelected: (v) => setState(() => _sortBy = v),
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: _SortBy.created,
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      _sortBy == _SortBy.created
+                          ? PhosphorIconsFill.check
+                          : PhosphorIconsRegular.clockClockwise,
+                      size: 18,
+                      color: _sortBy == _SortBy.created ? p.primary : p.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: AppSpacing.s12),
+                    Text('按添加顺序', style: AppType.body.copyWith(color: p.onSurface)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: _SortBy.dueDay,
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      _sortBy == _SortBy.dueDay
+                          ? PhosphorIconsFill.check
+                          : PhosphorIconsRegular.calendarBlank,
+                      size: 18,
+                      color: _sortBy == _SortBy.dueDay ? p.primary : p.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: AppSpacing.s12),
+                    Text('按截止日', style: AppType.body.copyWith(color: p.onSurface)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -82,12 +142,24 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                 _Filter.overdue =>
                   !t.done && t.dueDay != null && t.dueDay! < today,
                 _Filter.today => t.dueDay == today,
-                  _Filter.week =>
-                    t.dueDay != null && t.dueDay! >= today && t.dueDay! <= weekEndNum,
+                _Filter.week =>
+                  t.dueDay != null && t.dueDay! >= today && t.dueDay! <= weekEndNum,
                 _Filter.done => t.done,
               };
-          final active = all.where((t) => !t.done && matches(t)).toList();
-          final done = all.where((t) => t.done && matches(t)).toList();
+          var active = all.where((t) => !t.done && matches(t)).toList();
+          var done = all.where((t) => t.done && matches(t)).toList();
+          // 排序
+          int byCreated(Todo a, Todo b) => b.createdAt.compareTo(a.createdAt);
+          int byDue(Todo a, Todo b) {
+            final ad = a.dueDay;
+            final bd = b.dueDay;
+            if (ad == null && bd == null) return byCreated(a, b);
+            if (ad == null) return 1; // 无截止日排后
+            if (bd == null) return -1;
+            return ad.compareTo(bd);
+          }
+          active.sort(_sortBy == _SortBy.dueDay ? byDue : byCreated);
+          done.sort(byCreated);
           final total = all.length;
 
           return ListView(
@@ -136,7 +208,12 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                 for (var i = 0; i < active.length; i++)
                   StaggeredEntrance(
                     index: i,
-                    child: _TodoRow(todo: active[i]),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.page, 0, AppSpacing.page, AppSpacing.s8,
+                      ),
+                      child: _TodoRow(todo: active[i]),
+                    ),
                   ),
               // 已完成分区
               if (done.isNotEmpty) ...[
@@ -167,7 +244,13 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                   ),
                 ),
                 if (_doneExpanded)
-                  for (final t in done) _TodoRow(todo: t),
+                  for (final t in done)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.page, AppSpacing.s8, AppSpacing.page, 0,
+                      ),
+                      child: _TodoRow(todo: t),
+                    ),
               ],
             ],
           );
@@ -223,106 +306,106 @@ class _TodoRow extends ConsumerWidget {
     return n.year * 10000 + n.month * 100 + n.day;
   }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final p = Theme.of(context).colorScheme;
-    final overdue = !todo.done && todo.dueDay != null && todo.dueDay! < _today();
-    final dueToday = todo.dueDay == _today();
-    final dueText = todo.dueDay == null
-        ? null
-        : (dueToday
-            ? '今天'
-            : _fmtDay(todo.dueDay!));
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.page, 0, AppSpacing.page, AppSpacing.s8,
-      ),
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadii.rLg),
-          onLongPress: () => _edit(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.cardPad),
-            child: Row(
-              children: [
-                // 勾选框
-                PressableScale(
-                  onTap: () => ref
-                      .read(todoRepoProvider)
-                      .toggle(id: todo.id, done: !todo.done),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: todo.done ? p.primary : Colors.transparent,
-                      border: Border.all(
-                        color: todo.done ? p.primary : p.onSurfaceVariant,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: todo.done
-                        ? PhosphorIcon(
-                            PhosphorIconsFill.check,
-                            size: 14,
-                            color: p.onPrimary,
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        todo.title,
-                        style: AppType.body.copyWith(
-                          color: todo.done ? p.onSurfaceVariant : p.onSurface,
-                          decoration: todo.done
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
-                      ),
-                      if (dueText != null)
-                        Text(
-                          dueText,
-                          style: AppType.caption.copyWith(
-                            color: overdue
-                                ? p.error
-                                : (todo.done ? p.onSurfaceVariant : p.primary),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => _edit(context, ref),
-                  child: PhosphorIcon(
-                    PhosphorIconsRegular.pencilSimple,
-                    size: 16,
-                    color: p.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _edit(BuildContext context, WidgetRef ref) {
-    showTodoAddSheet(context, existing: todo);
-  }
-
   static String _fmtDay(int day) {
     final d = DateTime(day ~/ 10000, (day ~/ 100) % 100, day % 100);
     final n = DateTime.now();
     final diff = DateTime(n.year, n.month, n.day).difference(d).inDays;
     if (diff == -1) return '明天';
     if (diff == 0) return '今天';
+    if (diff == 1) return '昨天';
     return '${d.month}月${d.day}日';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    final today = _today();
+    final overdue = !todo.done && todo.dueDay != null && todo.dueDay! < today;
+    final dueToday = todo.dueDay == today;
+    final dueText = todo.dueDay == null
+        ? null
+        : (dueToday ? '今天' : _fmtDay(todo.dueDay!));
+    final accent = todo.done ? p.outline : p.primary;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.rLg),
+        onLongPress: () => showTodoAddSheet(context, existing: todo),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.cardPad, vertical: AppSpacing.s12,
+          ),
+          child: Row(
+            children: [
+              // 左侧装饰竖条
+              Container(
+                width: 3,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(AppRadii.rSm),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s12),
+              // 标题 + 截止小字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      todo.title,
+                      style: AppType.body.copyWith(
+                        color: todo.done ? p.onSurfaceVariant : p.onSurface,
+                        decoration: todo.done ? TextDecoration.lineThrough : null,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (dueText != null) ...[
+                      const SizedBox(height: AppSpacing.s4),
+                      Text(
+                        dueText,
+                        style: AppType.caption.copyWith(
+                          color: overdue
+                              ? p.error
+                              : (todo.done ? p.onSurfaceVariant : p.primary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s12),
+              // 圆形勾选框
+              PressableScale(
+                onTap: () => ref
+                    .read(todoRepoProvider)
+                    .toggle(id: todo.id, done: !todo.done),
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: todo.done ? p.primary : Colors.transparent,
+                    border: Border.all(
+                      color: todo.done ? p.primary : p.outline,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: todo.done
+                      ? PhosphorIcon(
+                          PhosphorIconsFill.check,
+                          size: 14,
+                          color: p.onPrimary,
+                        )
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

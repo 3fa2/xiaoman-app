@@ -3,13 +3,28 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '46d1d009-2715-4eec-a1db-e0e93c7c4faf'
-  PropagateID: '46d1d009-2715-4eec-a1db-e0e93c7c4faf'
-  ReservedCode1: '0c4b77e1-c1b5-4ad3-8f89-bc0bac82160d'
-  ReservedCode2: '0c4b77e1-c1b5-4ad3-8f89-bc0bac82160d'
+  ProduceID: '67fba7a3-88dd-4307-ba86-e59b9f30282e'
+  PropagateID: '67fba7a3-88dd-4307-ba86-e59b9f30282e'
+  ReservedCode1: '0e6d6f1a-8aa9-4a9f-b9c9-3f3ef27fb9e7'
+  ReservedCode2: '0e6d6f1a-8aa9-4a9f-b9c9-3f3ef27fb9e7'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v5.0.2+27（2026-10-04）· 待办页美化 + 小组件读库 bug 修复
+
+- **修复小组件读库路径（真 bug）**：添加待办后小组件仍显示"全部完成"——根因是 drift_flutter 的 `driftDatabase(name:'trinity')` 把库存在 `getApplicationDocumentsDirectory()`（即 `/data/data/<pkg>/app_flutter/trinity.sqlite`），而小组件 Kotlin 侧用的是 `getDatabasePath()`（`databases/trinity.sqlite`），路径不对、文件不存在，查询永远为空 → Kotlin 改为多候选路径探测（app_flutter 优先 + databases 兜底），现在能正确读到 drift 写入的待办
+- **待办页美化（按参考截图的形态，配色沿用雾蓝体系）**：
+  - 每条待办改成"左侧装饰竖条 + 标题/截止小字 + 右侧圆形勾选框"的卡片形态；未完成竖条雾蓝、已完成竖条灰色，划线文字弱化
+  - 截止日显示在标题下（今天/明天/昨天/月日，过期标红）
+  - AppBar 标题加"共 N 条"计数；右上角 ⋮ 弹排序菜单（按添加顺序 / 按截止日）
+- **小组件按参考截图重做样式（4x2 / 2x2）**：
+  - 头部改"大数字 + 「待办」小字 + 右上圆形大[+]按钮"（[+] 圆形雾蓝底 30dp、白色加号，替代之前过小的文字加号）
+  - 条目改成"装饰竖条 + 标题 + 空心圆勾选框"的圆角小卡，与待办页视觉统一
+  - 浅深两套色板同步加 `widget_item_bg` / `widget_add_fg`
+- 版本 5.0.2+27；测试 58/58；analyze 0 error/0 warning；架构 0 违规
+
+⚠️ 未实测项同前：小组件真实桌面添加/勾选/刷新（路径 bug 已修，待装机复验）、待办提醒真机响铃
 
 ## v5.0.1+26（2026-10-04）· 首页 Bento 布局 + 小组件加载修复
 

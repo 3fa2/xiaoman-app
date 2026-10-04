@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import java.io.File
 
 /// 待办小组件数据访问：直读 drift 的 trinity.sqlite。
 /// 安全性：小组件与 Flutter 引擎同进程同 uid，WAL 模式下并发读写安全；
@@ -18,8 +19,14 @@ object TodoWidgetData {
     data class Todo(val id: Int, val title: String)
 
     private fun open(context: Context): SQLiteDatabase? {
-        val f = context.getDatabasePath("trinity.sqlite")
-        if (!f.exists()) return null
+        // drift_flutter 的 driftDatabase(name:) 落在 getApplicationDocumentsDirectory()
+        // = /data/data/<pkg>/app_flutter/trinity.sqlite（path_provider 的文档目录）。
+        // databases/ 只是兜底候选，防止以后路径变化。
+        val candidates = listOf(
+            File(File(context.dataDir, "app_flutter"), "trinity.sqlite"),
+            context.getDatabasePath("trinity.sqlite"),
+        )
+        val f = candidates.firstOrNull { it.exists() } ?: return null
         return try {
             SQLiteDatabase.openDatabase(
                 f.absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
