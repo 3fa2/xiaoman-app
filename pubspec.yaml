@@ -1,7 +1,7 @@
 name: trinity
 description: "小满 - 日记本 + 备忘录 + 日程时间表（原三位一体 v4）"
 publish_to: "none"
-version: 5.0.2+27
+version: 5.0.3+28
 
 environment:
   sdk: ">=3.2.0 <4.0.0"

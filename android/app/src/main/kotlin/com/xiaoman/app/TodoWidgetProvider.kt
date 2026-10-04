@@ -3,6 +3,7 @@ package com.xiaoman.app
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.view.View
@@ -15,7 +16,11 @@ abstract class TodoWidgetBase : AppWidgetProvider() {
         if (intent.action == TodoWidgetData.ACTION_TOGGLE) {
             val id = intent.getIntExtra(TodoWidgetData.EXTRA_TODO_ID, -1)
             if (id > 0) {
-                TodoWidgetData.toggle(context, id)
+                // 在 SharedPreferences 缓存中翻转 done（即时反馈）
+                TodoWidgetStore.toggle(context, id)
+                // 尝试通知 Flutter 侧执行真正的 toggle（App 在运行时生效）
+                WidgetChannelBridge.toggleTodo(id)
+                // 刷新全部小组件
                 TodoWidgetData.refreshAll(context)
             }
         } else {
@@ -23,7 +28,6 @@ abstract class TodoWidgetBase : AppWidgetProvider() {
         }
     }
 
-    /// 打开 App（+ 按钮带 todo_add，整块点击带 todo）
     protected fun openAppPi(
         context: Context, action: String, requestCode: Int,
     ): PendingIntent {
@@ -36,7 +40,6 @@ abstract class TodoWidgetBase : AppWidgetProvider() {
         )
     }
 
-    /// 点条目 = 勾选切换（requestCode 加偏移避开其他 PendingIntent）
     protected fun togglePi(
         context: Context, provider: Class<*>, todoId: Int,
     ): PendingIntent {
@@ -50,14 +53,35 @@ abstract class TodoWidgetBase : AppWidgetProvider() {
     }
 }
 
-/// 4x2：标题行（待办 + 未完成数 + 添加）+ 最多 3 条列表，点条目勾选完成。
+/// 刷新全部小组件实例
+fun refreshAllWidgets(context: Context) {
+    try {
+        val m = AppWidgetManager.getInstance(context)
+        val ids4 = m.getAppWidgetIds(
+            ComponentName(context, TodoWidgetProvider4x2::class.java),
+        )
+        if (ids4.isNotEmpty()) {
+            TodoWidgetProvider4x2().onUpdate(context, m, ids4)
+        }
+        val ids2 = m.getAppWidgetIds(
+            ComponentName(context, TodoWidgetProvider2x2::class.java),
+        )
+        if (ids2.isNotEmpty()) {
+            TodoWidgetProvider2x2().onUpdate(context, m, ids2)
+        }
+    } catch (e: Exception) {
+        // 刷新失败不影响主流程
+    }
+}
+
+/// 4x2：大数字头部 + 圆形[+] + 最多 3 条装饰条卡。
 class TodoWidgetProvider4x2 : TodoWidgetBase() {
 
     override fun onUpdate(
         context: Context, manager: AppWidgetManager, appWidgetIds: IntArray,
     ) {
-        val todos = TodoWidgetData.openTodos(context, 3)
-        val count = TodoWidgetData.openCount(context)
+        val todos = TodoWidgetStore.openTodos(context, 3)
+        val count = TodoWidgetStore.openCount(context)
         val addPi = openAppPi(context, "todo_add", 10001)
         val openPi = openAppPi(context, "todo", 10002)
 
@@ -66,24 +90,22 @@ class TodoWidgetProvider4x2 : TodoWidgetBase() {
             v.setTextViewText(R.id.widget_count, "$count")
             v.setOnClickPendingIntent(R.id.widget_add, addPi)
 
-            // 3 条固定行：有数据填充并绑定勾选，无数据隐藏
             val rowIds = intArrayOf(R.id.widget_row0, R.id.widget_row1, R.id.widget_row2)
             val titleIds = intArrayOf(R.id.widget_title0, R.id.widget_title1, R.id.widget_title2)
             for (i in rowIds.indices) {
                 if (i < todos.size) {
                     val t = todos[i]
-                    v.setViewVisibility(rowIds[i], android.view.View.VISIBLE)
+                    v.setViewVisibility(rowIds[i], View.VISIBLE)
                     v.setTextViewText(titleIds[i], t.title)
                     v.setOnClickPendingIntent(
                         rowIds[i], togglePi(context, TodoWidgetProvider4x2::class.java, t.id),
                     )
                 } else {
-                    v.setViewVisibility(rowIds[i], android.view.View.GONE)
+                    v.setViewVisibility(rowIds[i], View.GONE)
                 }
             }
-            // 空态：一条都没有时显示一句宽慰话
             v.setViewVisibility(
-                R.id.widget_empty, if (todos.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE,
+                R.id.widget_empty, if (todos.isEmpty()) View.VISIBLE else View.GONE,
             )
             v.setOnClickPendingIntent(R.id.widget_root, openPi)
             manager.updateAppWidget(id, v)
@@ -91,14 +113,14 @@ class TodoWidgetProvider4x2 : TodoWidgetBase() {
     }
 }
 
-/// 2x2：大数字未完成数 + 最多 2 条列表。
+/// 2x2：大数字头部 + 圆形[+] + 最多 2 条装饰条卡。
 class TodoWidgetProvider2x2 : TodoWidgetBase() {
 
     override fun onUpdate(
         context: Context, manager: AppWidgetManager, appWidgetIds: IntArray,
     ) {
-        val todos = TodoWidgetData.openTodos(context, 2)
-        val count = TodoWidgetData.openCount(context)
+        val todos = TodoWidgetStore.openTodos(context, 2)
+        val count = TodoWidgetStore.openCount(context)
         val addPi = openAppPi(context, "todo_add", 10011)
         val openPi = openAppPi(context, "todo", 10012)
 
@@ -112,13 +134,13 @@ class TodoWidgetProvider2x2 : TodoWidgetBase() {
             for (i in rowIds.indices) {
                 if (i < todos.size) {
                     val t = todos[i]
-                    v.setViewVisibility(rowIds[i], android.view.View.VISIBLE)
+                    v.setViewVisibility(rowIds[i], View.VISIBLE)
                     v.setTextViewText(titleIds[i], t.title)
                     v.setOnClickPendingIntent(
                         rowIds[i], togglePi(context, TodoWidgetProvider2x2::class.java, t.id),
                     )
                 } else {
-                    v.setViewVisibility(rowIds[i], android.view.View.GONE)
+                    v.setViewVisibility(rowIds[i], View.GONE)
                 }
             }
             v.setOnClickPendingIntent(R.id.widget_root, openPi)

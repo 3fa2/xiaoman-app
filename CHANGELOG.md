@@ -3,13 +3,26 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '67fba7a3-88dd-4307-ba86-e59b9f30282e'
-  PropagateID: '67fba7a3-88dd-4307-ba86-e59b9f30282e'
-  ReservedCode1: '0e6d6f1a-8aa9-4a9f-b9c9-3f3ef27fb9e7'
-  ReservedCode2: '0e6d6f1a-8aa9-4a9f-b9c9-3f3ef27fb9e7'
+  ProduceID: 'db02e04a-ef7d-4963-9a83-7cc68c1899a1'
+  PropagateID: 'db02e04a-ef7d-4963-9a83-7cc68c1899a1'
+  ReservedCode1: '41cf4f7b-a6bf-4fa1-8706-9c7c030c66d5'
+  ReservedCode2: '41cf4f7b-a6bf-4fa1-8706-9c7c030c66d5'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v5.0.3+28（2026-10-04）· 小组件数据方案重做（SharedPreferences 缓存）
+
+- **根因定位**：v5.0.0~v5.0.2 小组件直读 trinity.sqlite 始终读不到数据——drift_flutter 用 sqlite3 (dart:ffi) + WAL 模式写库，新数据在 WAL 文件里，小组件用 Android SQLiteDatabase 打开主库时可能读不到 WAL 中的最新数据；v5.0.2 虽修了路径（app_flutter/trinity.sqlite）但 WAL 问题仍在
+- **方案改为 SharedPreferences 缓存**（彻底绕开 SQLite 直读）：
+  - Flutter 侧待办数据变化时通过 `trinity/widget` channel 推送 JSON 到原生 SharedPreferences
+  - 小组件从 SharedPreferences 读缓存数据渲染（不再直读 SQLite）
+  - 勾选操作：小组件先在缓存中翻转 done（即时视觉反馈），再通过 channel 通知 Flutter 执行真正的 toggle；App 没运行时标记到待同步队列，App 下次启动时 drainPending 同步
+- **修复勾选广播未注册**：Manifest 的 widget receiver 只注册了 APPWIDGET_UPDATE，缺少 ACTION_TOGGLE → 勾选广播根本没被收到；两个 receiver 都补上 ACTION_TOGGLE intent-filter
+- 新增 TodoWidgetStore（SharedPreferences 存取）+ WidgetChannelBridge（Provider → Flutter channel 桥）
+- 版本 5.0.3+28；测试 58/58；analyze 0 error/0 warning；架构 0 违规
+
+⚠️ 未实测项：小组件添加后实时刷新、桌面勾选、App 没运行时勾选的待同步（待装机复验）
 
 ## v5.0.2+27（2026-10-04）· 待办页美化 + 小组件读库 bug 修复
 

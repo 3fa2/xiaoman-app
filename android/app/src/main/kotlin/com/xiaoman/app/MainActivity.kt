@@ -46,21 +46,33 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // 小组件通道（v5.0）：数据变化刷新 + 启动动作分发。
+        // 小组件通道（v5.0→v5.0.3）：数据推送/刷新 + 启动动作分发 + 勾选回调。
         // 独立于 trinity/alarms（红线：闹钟通道不动）。
         widgetChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger, "trinity/widget",
         ).also { ch ->
+            WidgetChannelBridge.channel = ch
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "refresh" -> {
                         TodoWidgetData.refreshAll(applicationContext)
                         result.success(null)
                     }
+                    "updateTodos" -> {
+                        // Flutter 侧推送全量待办 JSON
+                        val json = call.argument<String>("todos") ?: ""
+                        WidgetChannelBridge.pushTodos(applicationContext, json)
+                        result.success(null)
+                    }
                     "getLaunchAction" -> {
                         val a = launchAction
                         launchAction = null
                         result.success(a)
+                    }
+                    "drainPending" -> {
+                        // App 启动时同步待处理勾选（App 没运行时小组件标记的 toggle）
+                        val ids = TodoWidgetStore.drainPendingToggles(applicationContext)
+                        result.success(ids)
                     }
                     else -> result.notImplemented()
                 }
