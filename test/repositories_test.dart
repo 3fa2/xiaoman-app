@@ -112,7 +112,9 @@ void main() {
       final nbId = await repo.saveDiaryNotebook(
         id: null, name: '碎碎念', colorIndex: 1,
       );
-      // 两篇日记：一篇归本、一篇不归
+      // 两篇日记：一篇归本、一篇不归（dateDay 取当前月，动态避免日期漂移）
+      final now = DateTime.now();
+      final ym = now.year * 100 + now.month;
       final inBook = await repo.save(
         id: null, title: '本内', content: 'a', extra: null,
       );
@@ -126,14 +128,14 @@ void main() {
       expect(notebooks.single.$2, 1);
       // 按本过滤
       final inList = await repo
-          .watchByMonthIn(202609, nbId)
+          .watchByMonthIn(ym, nbId)
           .first;
       expect(inList.map((d) => d.title), ['本内']);
       // 未归本过滤（-1）
-      final outList = await repo.watchByMonthIn(202609, -1).first;
+      final outList = await repo.watchByMonthIn(ym, -1).first;
       expect(outList.map((d) => d.title), ['本外']);
       // 全部视图两篇都有
-      expect((await repo.watchByMonthIn(202609, null).first).length, 2);
+      expect((await repo.watchByMonthIn(ym, null).first).length, 2);
       // 删除本：日记保留变未归本
       await repo.deleteDiaryNotebook(nbId);
       expect((await repo.watchDiaryNotebooks().first).isEmpty, isTrue);

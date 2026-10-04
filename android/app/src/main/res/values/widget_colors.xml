@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 待办小组件配色：与 App 设计系统 lightPalette 一致（骨架冷中性灰 + 雾蓝强调） -->
+    <color name="widget_bg">#FBFBFC</color>
+    <color name="widget_ink">#191C1F</color>
+    <color name="widget_ink_soft">#5A6068</color>
+    <color name="widget_primary">#3D6B8E</color>
+    <color name="widget_ring">#8B9199</color>
+</resources>

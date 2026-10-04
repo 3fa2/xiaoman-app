@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -104,6 +105,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Card(
             child: Column(
               children: [
+                // v5.0：日程从底部 tab 摘除，这里保留全功能入口
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.calendarBlank,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '日程管理',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '查看 / 新建 / 编辑日程，与首页入口相同',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/schedule'),
+                ),
+                const Divider(indent: AppSpacing.cardPad),
                 ListTile(
                   leading: PhosphorIcon(
                     _notifGranted
@@ -219,7 +238,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.block),
           Center(
             child: Text(
-              '小满 v4.6.0 · 本地数据，不联网',
+              '小满 v5.0.0 · 本地数据，不联网',
               style: AppType.caption.copyWith(color: p.onSurfaceVariant),
             ),
           ),

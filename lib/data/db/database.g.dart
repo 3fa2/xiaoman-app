@@ -4480,6 +4480,419 @@ class SettingsCompanion extends UpdateCompanion<SettingRow> {
   }
 }
 
+class $TodosTable extends Todos with TableInfo<$TodosTable, TodoRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TodosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _doneMeta = const VerificationMeta('done');
+  @override
+  late final GeneratedColumn<bool> done = GeneratedColumn<bool>(
+      'done', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("done" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _dueDayMeta = const VerificationMeta('dueDay');
+  @override
+  late final GeneratedColumn<int> dueDay = GeneratedColumn<int>(
+      'due_day', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _remindBeforeMeta =
+      const VerificationMeta('remindBefore');
+  @override
+  late final GeneratedColumn<int> remindBefore = GeneratedColumn<int>(
+      'remind_before', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, title, done, dueDay, remindBefore, sortOrder, createdAt, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'todos';
+  @override
+  VerificationContext validateIntegrity(Insertable<TodoRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('done')) {
+      context.handle(
+          _doneMeta, done.isAcceptableOrUnknown(data['done']!, _doneMeta));
+    }
+    if (data.containsKey('due_day')) {
+      context.handle(_dueDayMeta,
+          dueDay.isAcceptableOrUnknown(data['due_day']!, _dueDayMeta));
+    }
+    if (data.containsKey('remind_before')) {
+      context.handle(
+          _remindBeforeMeta,
+          remindBefore.isAcceptableOrUnknown(
+              data['remind_before']!, _remindBeforeMeta));
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TodoRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TodoRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
+      done: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}done'])!,
+      dueDay: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}due_day']),
+      remindBefore: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}remind_before']),
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $TodosTable createAlias(String alias) {
+    return $TodosTable(attachedDatabase, alias);
+  }
+}
+
+class TodoRow extends DataClass implements Insertable<TodoRow> {
+  final int id;
+  final String title;
+  final bool done;
+  final int? dueDay;
+  final int? remindBefore;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const TodoRow(
+      {required this.id,
+      required this.title,
+      required this.done,
+      this.dueDay,
+      this.remindBefore,
+      required this.sortOrder,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['title'] = Variable<String>(title);
+    map['done'] = Variable<bool>(done);
+    if (!nullToAbsent || dueDay != null) {
+      map['due_day'] = Variable<int>(dueDay);
+    }
+    if (!nullToAbsent || remindBefore != null) {
+      map['remind_before'] = Variable<int>(remindBefore);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  TodosCompanion toCompanion(bool nullToAbsent) {
+    return TodosCompanion(
+      id: Value(id),
+      title: Value(title),
+      done: Value(done),
+      dueDay:
+          dueDay == null && nullToAbsent ? const Value.absent() : Value(dueDay),
+      remindBefore: remindBefore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remindBefore),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory TodoRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TodoRow(
+      id: serializer.fromJson<int>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      done: serializer.fromJson<bool>(json['done']),
+      dueDay: serializer.fromJson<int?>(json['dueDay']),
+      remindBefore: serializer.fromJson<int?>(json['remindBefore']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'title': serializer.toJson<String>(title),
+      'done': serializer.toJson<bool>(done),
+      'dueDay': serializer.toJson<int?>(dueDay),
+      'remindBefore': serializer.toJson<int?>(remindBefore),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  TodoRow copyWith(
+          {int? id,
+          String? title,
+          bool? done,
+          Value<int?> dueDay = const Value.absent(),
+          Value<int?> remindBefore = const Value.absent(),
+          int? sortOrder,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      TodoRow(
+        id: id ?? this.id,
+        title: title ?? this.title,
+        done: done ?? this.done,
+        dueDay: dueDay.present ? dueDay.value : this.dueDay,
+        remindBefore:
+            remindBefore.present ? remindBefore.value : this.remindBefore,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  TodoRow copyWithCompanion(TodosCompanion data) {
+    return TodoRow(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      done: data.done.present ? data.done.value : this.done,
+      dueDay: data.dueDay.present ? data.dueDay.value : this.dueDay,
+      remindBefore: data.remindBefore.present
+          ? data.remindBefore.value
+          : this.remindBefore,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TodoRow(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('dueDay: $dueDay, ')
+          ..write('remindBefore: $remindBefore, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, title, done, dueDay, remindBefore, sortOrder, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TodoRow &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.done == this.done &&
+          other.dueDay == this.dueDay &&
+          other.remindBefore == this.remindBefore &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class TodosCompanion extends UpdateCompanion<TodoRow> {
+  final Value<int> id;
+  final Value<String> title;
+  final Value<bool> done;
+  final Value<int?> dueDay;
+  final Value<int?> remindBefore;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const TodosCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.done = const Value.absent(),
+    this.dueDay = const Value.absent(),
+    this.remindBefore = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  TodosCompanion.insert({
+    this.id = const Value.absent(),
+    required String title,
+    this.done = const Value.absent(),
+    this.dueDay = const Value.absent(),
+    this.remindBefore = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  })  : title = Value(title),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<TodoRow> custom({
+    Expression<int>? id,
+    Expression<String>? title,
+    Expression<bool>? done,
+    Expression<int>? dueDay,
+    Expression<int>? remindBefore,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (done != null) 'done': done,
+      if (dueDay != null) 'due_day': dueDay,
+      if (remindBefore != null) 'remind_before': remindBefore,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  TodosCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? title,
+      Value<bool>? done,
+      Value<int?>? dueDay,
+      Value<int?>? remindBefore,
+      Value<int>? sortOrder,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
+    return TodosCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      done: done ?? this.done,
+      dueDay: dueDay ?? this.dueDay,
+      remindBefore: remindBefore ?? this.remindBefore,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (done.present) {
+      map['done'] = Variable<bool>(done.value);
+    }
+    if (dueDay.present) {
+      map['due_day'] = Variable<int>(dueDay.value);
+    }
+    if (remindBefore.present) {
+      map['remind_before'] = Variable<int>(remindBefore.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TodosCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('dueDay: $dueDay, ')
+          ..write('remindBefore: $remindBefore, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4496,6 +4909,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ScheduleInstancesTable(this);
   late final $DraftsTable drafts = $DraftsTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $TodosTable todos = $TodosTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4511,7 +4925,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         scheduleTemplates,
         scheduleInstances,
         drafts,
-        settings
+        settings,
+        todos
       ];
 }
 
@@ -6796,6 +7211,214 @@ typedef $$SettingsTableProcessedTableManager = ProcessedTableManager<
     (SettingRow, BaseReferences<_$AppDatabase, $SettingsTable, SettingRow>),
     SettingRow,
     PrefetchHooks Function()>;
+typedef $$TodosTableCreateCompanionBuilder = TodosCompanion Function({
+  Value<int> id,
+  required String title,
+  Value<bool> done,
+  Value<int?> dueDay,
+  Value<int?> remindBefore,
+  Value<int> sortOrder,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+});
+typedef $$TodosTableUpdateCompanionBuilder = TodosCompanion Function({
+  Value<int> id,
+  Value<String> title,
+  Value<bool> done,
+  Value<int?> dueDay,
+  Value<int?> remindBefore,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+class $$TodosTableFilterComposer extends Composer<_$AppDatabase, $TodosTable> {
+  $$TodosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get done => $composableBuilder(
+      column: $table.done, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get dueDay => $composableBuilder(
+      column: $table.dueDay, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get remindBefore => $composableBuilder(
+      column: $table.remindBefore, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$TodosTableOrderingComposer
+    extends Composer<_$AppDatabase, $TodosTable> {
+  $$TodosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get done => $composableBuilder(
+      column: $table.done, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get dueDay => $composableBuilder(
+      column: $table.dueDay, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get remindBefore => $composableBuilder(
+      column: $table.remindBefore,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$TodosTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TodosTable> {
+  $$TodosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<bool> get done =>
+      $composableBuilder(column: $table.done, builder: (column) => column);
+
+  GeneratedColumn<int> get dueDay =>
+      $composableBuilder(column: $table.dueDay, builder: (column) => column);
+
+  GeneratedColumn<int> get remindBefore => $composableBuilder(
+      column: $table.remindBefore, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$TodosTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $TodosTable,
+    TodoRow,
+    $$TodosTableFilterComposer,
+    $$TodosTableOrderingComposer,
+    $$TodosTableAnnotationComposer,
+    $$TodosTableCreateCompanionBuilder,
+    $$TodosTableUpdateCompanionBuilder,
+    (TodoRow, BaseReferences<_$AppDatabase, $TodosTable, TodoRow>),
+    TodoRow,
+    PrefetchHooks Function()> {
+  $$TodosTableTableManager(_$AppDatabase db, $TodosTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TodosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TodosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TodosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<bool> done = const Value.absent(),
+            Value<int?> dueDay = const Value.absent(),
+            Value<int?> remindBefore = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              TodosCompanion(
+            id: id,
+            title: title,
+            done: done,
+            dueDay: dueDay,
+            remindBefore: remindBefore,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String title,
+            Value<bool> done = const Value.absent(),
+            Value<int?> dueDay = const Value.absent(),
+            Value<int?> remindBefore = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+          }) =>
+              TodosCompanion.insert(
+            id: id,
+            title: title,
+            done: done,
+            dueDay: dueDay,
+            remindBefore: remindBefore,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$TodosTable, TodoRow>(table),
+                    BaseReferences<_$AppDatabase, $TodosTable, TodoRow>(
+                        db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$TodosTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $TodosTable,
+    TodoRow,
+    $$TodosTableFilterComposer,
+    $$TodosTableOrderingComposer,
+    $$TodosTableAnnotationComposer,
+    $$TodosTableCreateCompanionBuilder,
+    $$TodosTableUpdateCompanionBuilder,
+    (TodoRow, BaseReferences<_$AppDatabase, $TodosTable, TodoRow>),
+    TodoRow,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6822,4 +7445,6 @@ class $AppDatabaseManager {
       $$DraftsTableTableManager(_db, _db.drafts);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$TodosTableTableManager get todos =>
+      $$TodosTableTableManager(_db, _db.todos);
 }

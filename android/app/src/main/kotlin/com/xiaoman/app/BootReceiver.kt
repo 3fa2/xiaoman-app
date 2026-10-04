@@ -31,6 +31,7 @@ class BootReceiver : BroadcastReceiver() {
                 putExtra(AlarmReceiver.EXTRA_TITLE, e.title)
                 putExtra(AlarmReceiver.EXTRA_BODY, e.body)
                 putExtra(AlarmReceiver.EXTRA_PAYLOAD, e.payload)
+                putExtra(AlarmReceiver.EXTRA_CHANNEL, e.channel)
             }
             val pi = PendingIntent.getBroadcast(
                 context, e.id, i,
@@ -44,5 +45,7 @@ class BootReceiver : BroadcastReceiver() {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, e.epochMs, pi)
             }
         }
+        // v5.0：顺手刷新待办小组件（开机后数字/列表才不会停留在旧状态）
+        TodoWidgetData.refreshAll(context)
     }
 }

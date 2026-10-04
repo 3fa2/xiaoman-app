@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 待办小组件配色（深色）：与 darkPalette 一致 -->
+    <color name="widget_bg">#1E2226</color>
+    <color name="widget_ink">#E7E9EB</color>
+    <color name="widget_ink_soft">#A3A9B0</color>
+    <color name="widget_primary">#7FA8C9</color>
+    <color name="widget_ring">#767C84</color>
+</resources>

@@ -19,6 +19,7 @@ part 'database.g.dart';
     ScheduleInstances,
     Drafts,
     Settings,
+    Todos,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -28,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -59,6 +60,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.addColumn(scheduleTemplates, scheduleTemplates.startDate);
             await m.addColumn(scheduleTemplates, scheduleTemplates.endDate);
+          }
+          // v5 → v6：独立待办表（v5.0 桌面小组件 + 待办 tab）
+          if (from < 6) {
+            await m.createTable(todos);
           }
         },
       );

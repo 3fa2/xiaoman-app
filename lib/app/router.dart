@@ -18,9 +18,10 @@ import '../features/schedule/schedule_today_screen.dart';
 import '../features/schedule/template_manage_screen.dart';
 import '../features/settings/lock_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/todo/todo_screen.dart';
 import 'app_shell.dart';
 
-final _rootKey = GlobalKey<NavigatorState>();
+final rootKey = GlobalKey<NavigatorState>();
 
 /// 解锁状态（内存态：进 App 锁一次即可）
 final lockGateProvider = Provider<LockGate>((ref) => LockGate());
@@ -43,7 +44,7 @@ class LockGate {
 final routerProvider = Provider<GoRouter>((ref) {
   final gate = ref.watch(lockGateProvider);
   return GoRouter(
-    navigatorKey: _rootKey,
+    navigatorKey: rootKey,
     initialLocation: '/home',
     redirect: (context, state) {
       // 锁屏 hash 尚未加载完：放行，加载完由 router.refresh() 触发重定向
@@ -104,6 +105,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
+              GoRoute(path: '/todo', builder: (c, s) => const TodoScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
               GoRoute(
                 path: '/notes',
                 builder: (c, s) => const NotebookGridScreen(),
@@ -133,39 +139,36 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/schedule',
-                builder: (c, s) => const ScheduleTodayScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'day/:dateDay',
-                    builder: (c, s) => ScheduleDayScreen(
-                      dateDay: int.parse(s.pathParameters['dateDay']!),
-                    ),
-                  ),
-                  GoRoute(
-                    path: 'edit',
-                    builder: (c, s) => ScheduleEditScreen(
-                      instanceId: int.tryParse(
-                        s.uri.queryParameters['instanceId'] ?? '',
-                      ),
-                      templateId: int.tryParse(
-                        s.uri.queryParameters['templateId'] ?? '',
-                      ),
-                      dateDay: int.tryParse(
-                        s.uri.queryParameters['dateDay'] ?? '',
-                      ),
-                    ),
-                  ),
-                  GoRoute(
-                    path: 'templates',
-                    builder: (c, s) => const TemplateManageScreen(),
-                  ),
-                ],
+        ],
+      ),
+      // 日程：v5.0 起从底部 tab 摘除，作为顶层页面由设置页/首页入口进入，功能与数据全保留
+      GoRoute(
+        path: '/schedule',
+        builder: (c, s) => const ScheduleTodayScreen(),
+        routes: [
+          GoRoute(
+            path: 'day/:dateDay',
+            builder: (c, s) => ScheduleDayScreen(
+              dateDay: int.parse(s.pathParameters['dateDay']!),
+            ),
+          ),
+          GoRoute(
+            path: 'edit',
+            builder: (c, s) => ScheduleEditScreen(
+              instanceId: int.tryParse(
+                s.uri.queryParameters['instanceId'] ?? '',
               ),
-            ],
+              templateId: int.tryParse(
+                s.uri.queryParameters['templateId'] ?? '',
+              ),
+              dateDay: int.tryParse(
+                s.uri.queryParameters['dateDay'] ?? '',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: 'templates',
+            builder: (c, s) => const TemplateManageScreen(),
           ),
         ],
       ),

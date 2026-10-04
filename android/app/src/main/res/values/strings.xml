@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v5.0 待办小组件描述（appwidget-provider 的 description 必须走资源引用） -->
+    <string name="widget_todo_desc">待办：未完成数和最近几条，点一下就能勾掉</string>
+    <string name="widget_todo_small_desc">待办（小）：只看数字和最近两条</string>
+</resources>

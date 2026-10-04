@@ -3,13 +3,38 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '17e1589f-706c-4bb1-803e-e5bbbba3e4af'
-  PropagateID: '17e1589f-706c-4bb1-803e-e5bbbba3e4af'
-  ReservedCode1: '4fda5cee-d8d0-475a-bc82-ae21b51dd382'
-  ReservedCode2: '4fda5cee-d8d0-475a-bc82-ae21b51dd382'
+  ProduceID: '6cce5aed-bba2-4442-976a-1a76ffe35899'
+  PropagateID: '6cce5aed-bba2-4442-976a-1a76ffe35899'
+  ReservedCode1: '2a475a95-8fa2-4eb7-bfbe-c1075a0a5adb'
+  ReservedCode2: '2a475a95-8fa2-4eb7-bfbe-c1075a0a5adb'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v5.0.0+25（2026-10-04）· 独立待办 + 桌面小组件
+
+- **底部导航改版**：首页 / 日记 / **待办** / 备忘——待办首次成为一级页面；日程从 tab 摘除（功能与数据全保留，入口在设置页「日程管理」和首页卡片，push 进入可返回）
+- **独立待办**（全新功能，与备忘笔记里的清单子项无关）：
+  - 新建/编辑弹窗：标题 + 截止（无期限/今天/明天/选日期）+ 提醒（到点/提前 10/30/60 分钟）
+  - 待办页：筛选条（全部/进行中/已过期/今天/最近 7/已完成）+ 未完成列表 + 已完成折叠分区 + 点勾选框完成/恢复 + 长按或铅笔编辑
+  - schema v5→v6：新增 todos 表（id/title/done/dueDay/remindBefore/sortOrder/createdAt/updatedAt），迁移自动建表，旧数据零影响
+- **桌面小组件**（4x2 列表型 / 2x2 数字型两种规格）：
+  - 4x2：未完成数 + 最近 3 条，点条目直接在桌面勾掉，[+] 快捷记一条
+  - 2x2：大数字未完成数 + 最近 2 条
+  - 数据通道：原生 Kotlin 直读 trinity.sqlite（同进程，WAL 并发安全）；勾选直写会触发 drift 表触发器——App 内列表自动同步刷新，反向同理
+  - 刷新四路保活：App 内数据变化 / 桌面勾选 / 重启重建（BootReceiver 顺手刷）/ 每 30 分钟系统兜底
+  - [+] 打开 App 直达待办页并弹出添加框（锁屏中降级为只导航）
+  - 小组件事务走独立 MethodChannel `trinity/widget`；`trinity/alarms` 通道一行未动
+- **待办提醒接入三层兜底**（与日程同一套可靠性设计）：
+  - 截止日当天 09:00 提醒（可选提前 10/30/60 分钟），未完成的才排，完成/删除自动取消；待办变化即全量重建
+  - 插件层精确闹钟 + 原生持久层（重启重建）+ 每次启动全量重建，与日程一致
+  - 新通知渠道 `trinity_todo`「待办提醒」；`trinity_schedule` 渠道 id 红线未动
+  - 待办通知 id 加 1000000 偏移防与日程实例撞号；原生兜底通知补 App 图标大图
+- 测试日期漂移修复：repositories_test 写死 202609 月份，到 10 月必挂 → 改动态取当前月
+
+测试 58/58 全过；analyze 0 error/0 warning；架构检查 0 违规；版本 5.0.0+25（pubspec + local.properties 双写）
+
+⚠️ 未实测项（无模拟器/真机环境，待装机验证）：小组件在真实桌面上的添加/勾选/刷新表现、待办提醒真机到点响铃、[+] 按钮冷启动直达路径
 
 ## v4.8.0+24（2026-09-20）· 单次/时间段日程 + 日程颜色加深
 

@@ -18,8 +18,54 @@ class MainActivity : FlutterFragmentActivity() {
 
     private var pendingResult: MethodChannel.Result? = null
 
+    companion object {
+        /// 小组件 + 按钮带来的打开动作（冷启动时 engine 未就绪先存这里，
+        /// Flutter 启动后通过 getLaunchAction 取走；热启动直接 invoke）
+        @JvmStatic var launchAction: String? = null
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        readOpenAction(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readOpenAction(intent)
+    }
+
+    private fun readOpenAction(intent: Intent?) {
+        val a = intent?.getStringExtra(TodoWidgetData.EXTRA_OPEN_ACTION) ?: return
+        launchAction = a
+        // 热启动时 engine 在跑，直接推给 Flutter
+        widgetChannel?.invokeMethod("openAction", a)
+    }
+
+    private var widgetChannel: MethodChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // 小组件通道（v5.0）：数据变化刷新 + 启动动作分发。
+        // 独立于 trinity/alarms（红线：闹钟通道不动）。
+        widgetChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, "trinity/widget",
+        ).also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "refresh" -> {
+                        TodoWidgetData.refreshAll(applicationContext)
+                        result.success(null)
+                    }
+                    "getLaunchAction" -> {
+                        val a = launchAction
+                        launchAction = null
+                        result.success(a)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // 闹钟通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "trinity/alarms")
@@ -35,6 +81,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 body = m["body"] as? String ?: "",
                                 epochMs = (m["epochMs"] as? Number)?.toLong() ?: return@mapNotNull null,
                                 payload = m["payload"] as? String,
+                                channel = m["channel"] as? String ?: "trinity_schedule",
                             )
                         }
                         // 先取消旧持久列表里的全部闹钟（filterEquals 不比较 extras，

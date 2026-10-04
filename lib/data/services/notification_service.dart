@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../domain/models/schedule.dart';
+import '../../domain/models/todo.dart';
 import '../../domain/repositories/repositories.dart';
 
 /// 日程提醒服务（P0-2）。
@@ -21,6 +22,13 @@ class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
+
+  /// v5.0：待办提醒——通知 id 偏移（避免与日程实例 id 撞号），
+  /// 新渠道 trinity_todo（trinity_schedule 渠道红线不动），
+  /// 待办只有截止日没有时刻，约定当天 09:00 提醒（remindBefore 分钟提前）
+  static const _todoIdBase = 1000000;
+  static const _todoChannel = 'trinity_todo';
+  static const _todoRemindHour = 9;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -60,8 +68,9 @@ class NotificationService {
     }
   }
 
-  /// 重建未来 14 天全部提醒。返回警告（UI 显示"提醒未生效"）。
-  Future<List<String>> syncAll(ScheduleRepository repo) async {
+  /// 重建未来 14 天全部提醒（日程 + 待办）。
+  /// 返回警告（UI 显示"提醒未生效"）。
+  Future<List<String>> syncAll(ScheduleRepository repo, {List<Todo>? todos}) async {
     final warnings = <String>[];
     if (!_inited) await init();
 
@@ -132,6 +141,52 @@ class NotificationService {
         'title': i.title,
         'body': '${_hm(i.startMinutes)} · ${i.title}',
         'epochMs': epochMs,
+      });
+    }
+
+    // v5.0：待办提醒（截止日 09:00 - remindBefore，未完成的才排）。
+    // 在 setAll 之前 append：日程 + 待办一次性合并下发，原生层整体覆盖重建。
+    final todoList = (todos ?? const <Todo>[])
+        .where((t) => !t.done && t.dueDay != null)
+        .toList();
+    for (final t in todoList.take(32)) {
+      final day = t.dueDay!;
+      final due = DateTime(
+        day ~/ 10000, (day ~/ 100) % 100, day % 100, _todoRemindHour,
+      );
+      final at = due.subtract(Duration(minutes: t.remindBefore ?? 0));
+      if (!at.isAfter(now)) continue;
+      final nid = _todoIdBase + t.id;
+      try {
+        await _plugin.zonedSchedule(
+          nid,
+          t.title,
+          '待办到期提醒',
+          tz.TZDateTime.from(at, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'trinity_todo', '待办提醒',
+              channelDescription: '待办截止日提醒',
+              importance: Importance.max,
+              priority: Priority.high,
+              fullScreenIntent: true,
+            ),
+          ),
+          androidScheduleMode: exactOk
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (e) {
+        warnings.add('「${t.title}」待办提醒排定失败：$e');
+      }
+      nativePayloads.add({
+        'id': nid,
+        'title': t.title,
+        'body': '待办到期提醒',
+        'epochMs': at.millisecondsSinceEpoch,
+        'channel': _todoChannel,
       });
     }
 

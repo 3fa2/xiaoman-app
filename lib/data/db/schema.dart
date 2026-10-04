@@ -150,5 +150,19 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+/// ⑧ 独立待办（v5.0 新增）：桌面小组件 + 待办 tab 的数据源。
+/// 与 TodoItems（笔记内清单）互相独立，互不影响。
+@DataClassName('TodoRow')
+class Todos extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get title => text()();
+  BoolColumn get done => boolean().withDefault(const Constant(false))();
+  IntColumn get dueDay => integer().nullable()(); // yyyymmdd 截止日（null=无期限）
+  IntColumn get remindBefore => integer().nullable()(); // 提前提醒分钟数（null=到点即提醒）
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
 /// ⑦ 全文索引（FTS5 external content + 触发器，见 database.dart）
 /// diaries_fts(content, title) / notes_fts(content, title, tags)

@@ -78,6 +78,30 @@
             </intent-filter>
         </receiver>
 
+        <!-- 待办小组件（v5.0）：4x2 列表型 / 2x2 数字型 -->
+        <receiver
+            android:name=".TodoWidgetProvider4x2"
+            android:exported="false"
+            android:label="待办">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_4x2_info"/>
+        </receiver>
+        <receiver
+            android:name=".TodoWidgetProvider2x2"
+            android:exported="false"
+            android:label="待办（小）">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_2x2_info"/>
+        </receiver>
+
         <!-- Flutter 引擎注册表（Flutter 3.x 标准配置） -->
         <meta-data
             android:name="flutterEmbedding"

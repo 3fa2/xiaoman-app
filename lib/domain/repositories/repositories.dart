@@ -2,6 +2,7 @@ import '../models/diary.dart';
 import '../models/media.dart';
 import '../models/note.dart';
 import '../models/schedule.dart';
+import '../models/todo.dart';
 
 /// 仓库接口（domain 层，纯 Dart）。
 /// 实现在 data/repositories/；features 只允许 import 本文件与 di/providers。
@@ -87,6 +88,20 @@ abstract interface class NoteRepository implements EditorRepository {
   Future<void> addTodo({required int noteId, required String text});
   Future<void> toggleTodo({required int todoId, required bool done});
   Future<void> deleteTodo(int todoId);
+}
+
+/// 独立待办（v5.0：待办 tab + 桌面小组件数据源）
+abstract interface class TodoRepository {
+  Stream<List<Todo>> watchAll(); // 未完成在前，按 sortOrder/createdAt
+  Future<int> add({required String title, int? dueDay, int? remindBefore});
+  Future<void> update({
+    required int id,
+    required String title,
+    int? dueDay,
+    int? remindBefore,
+  });
+  Future<void> toggle({required int id, required bool done});
+  Future<void> delete(int id);
 }
 
 abstract interface class ScheduleRepository {

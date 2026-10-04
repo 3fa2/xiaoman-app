@@ -52,7 +52,7 @@ class HomeScreen extends ConsumerWidget {
             '今日日程',
             action: TextActionButton(
               label: '全部',
-              onPressed: () => context.go('/schedule'),
+              onPressed: () => context.push('/schedule'),
             ),
           ),
           _NextBlocks(stream: blocks),
@@ -119,7 +119,7 @@ class _NextBlocks extends StatelessWidget {
                     ),
                     TextActionButton(
                       label: '去日程',
-                      onPressed: () => context.go('/schedule'),
+                      onPressed: () => context.push('/schedule'),
                     ),
                   ],
                 ),

@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
 import 'app/router.dart';
+import 'app/widget_sync.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'data/services/notification_service.dart';
@@ -93,6 +94,7 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
   /// 1. 锁屏 hash 加载（决定首帧是否重定向锁屏）
   /// 2. 通知初始化  3. 日程 regenerate（滚动窗口）
   /// 4. 提醒全量重建（uhabits #1509 兜底，不阻塞首帧）
+  /// 5. 小组件同步（v5.0）：订阅数据变化刷桌面小组件 + 补取小组件入口动作
   /// 每步独立容错：一步失败不影响后续
   Future<void> _bootstrap() async {
     final router = ref.read(routerProvider);
@@ -118,6 +120,13 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
       // 生成失败：下次打开日程页重试
     }
     unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
+
+    try {
+      WidgetSync.attach(ref);
+      await WidgetSync.drainLaunchAction(ref);
+    } catch (e) {
+      // 小组件事务不影响启动
+    }
   }
 
   @override
