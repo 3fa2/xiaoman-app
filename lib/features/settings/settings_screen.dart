@@ -238,7 +238,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.block),
           Center(
             child: Text(
-              '小满 v5.0.0 · 本地数据，不联网',
+              '小满 v5.0.1 · 本地数据，不联网',
               style: AppType.caption.copyWith(color: p.onSurfaceVariant),
             ),
           ),

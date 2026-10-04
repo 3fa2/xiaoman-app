@@ -10,11 +10,12 @@ import '../../design/tokens.dart';
 import '../../di/providers.dart';
 import '../../domain/models/diary.dart';
 import '../../domain/models/schedule.dart';
+import '../../domain/models/todo.dart';
 import '../../domain/services/rrule_service.dart';
 import '../shared/widgets.dart';
 
-/// 首页：今日时间块（接下来 3 条）+ 今日心情打卡 + 最近 3 篇日记 + 快捷新建。
-/// 骨架无彩色：页面只有灰阶，彩色只在心情点/日程块内。
+/// 首页 · S2 Bento（v5.0.1）：全宽心情卡 + 左「今日日记」右「日程/待办」不等高网格。
+/// 骨架无彩色：卡片只灰阶，彩色只在心情点/日程块内（v4 设计三铁律）。
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -25,6 +26,7 @@ class HomeScreen extends ConsumerWidget {
     final blocks = ref.watch(scheduleRepoProvider).watchDay(todayDay);
     final diaries = ref.watch(diaryRepoProvider).watchAll();
     final moods = ref.watch(diaryRepoProvider).watchMoods();
+    final todos = ref.watch(todoRepoProvider).watchAll();
 
     return Scaffold(
       appBar: AppBar(
@@ -46,158 +48,123 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: AppSpacing.listBottom),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
+        ),
         children: [
-          SectionHeader(
-            '今日日程',
-            action: TextActionButton(
-              label: '全部',
-              onPressed: () => context.push('/schedule'),
+          // ① 此刻心情（全宽卡）
+          _MoodBento(moods: moods, diaries: diaries),
+          const SizedBox(height: AppSpacing.s12),
+          // ② 不等高网格：左「今日日记」高卡 + 右「日程/待办」竖排
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _TodayDiariesBento(stream: diaries, moods: moods),
+                ),
+                const SizedBox(width: AppSpacing.s12),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      Expanded(child: _ScheduleBento(stream: blocks)),
+                      const SizedBox(height: AppSpacing.s12),
+                      Expanded(child: _TodoBento(stream: todos)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          _NextBlocks(stream: blocks),
-          const SizedBox(height: AppSpacing.block),
-          const SectionHeader('今日心情'),
-          _MoodCheckin(moods: moods, diaries: diaries),
-          const SizedBox(height: AppSpacing.block),
-          SectionHeader(
-            '最近日记',
-            action: TextActionButton(
-              label: '全部',
-              onPressed: () => context.openDiarySearch(),
-            ),
-          ),
-          _RecentDiaries(stream: diaries, moods: moods),
         ],
       ),
     );
   }
 }
 
-class _NextBlocks extends StatelessWidget {
-  const _NextBlocks({required this.stream});
-
-  final Stream<List<ScheduleInstance>> stream;
+/// 卡片容器（bento 网格内统一无 margin）
+class _BentoCard extends StatelessWidget {
+  const _BentoCard({required this.child, this.onTap});
+  final Widget child;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final p = Theme.of(context).colorScheme;
-    return StreamBuilder<List<ScheduleInstance>>(
-      stream: stream,
-      builder: (context, snap) {
-        final now = DateTime.now();
-        final nowMinutes = now.hour * 60 + now.minute;
-        final todayDay =
-            now.year * 10000 + now.month * 100 + now.day;
-        final upcoming = (snap.data ?? const <ScheduleInstance>[])
-            .where(
-              (b) =>
-                  b.status == BlockStatus.pending &&
-                  b.endMinutes >= nowMinutes &&
-                  b.dateDay == todayDay,
-            )
-            .toList();
-        if (upcoming.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.cardPad),
-                child: Row(
-                  children: [
-                    PhosphorIcon(
-                      PhosphorIconsRegular.calendarBlank,
-                      color: p.onSurfaceVariant,
-                      size: 20,
-                    ),
-                    const SizedBox(width: AppSpacing.s12),
-                    Expanded(
-                      child: Text(
-                        '今天没有接下来的安排',
-                        style: AppType.body.copyWith(color: p.onSurfaceVariant),
-                      ),
-                    ),
-                    TextActionButton(
-                      label: '去日程',
-                      onPressed: () => context.push('/schedule'),
-                    ),
-                  ],
-                ),
-              ),
+    final pad = Padding(
+      padding: const EdgeInsets.all(AppSpacing.cardPad),
+      child: child,
+    );
+    return Card(
+      margin: EdgeInsets.zero,
+      child: onTap == null
+          ? pad
+          : InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.rLg),
+              onTap: onTap,
+              child: pad,
             ),
-          );
-        }
-        return Column(
-          children: [
-            for (var i = 0; i < upcoming.length; i++)
-              StaggeredEntrance(
-                index: i,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.page, 0, AppSpacing.page, AppSpacing.s8,
-                  ),
-                  child: _BlockRow(block: upcoming[i]),
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 }
 
-class _BlockRow extends StatelessWidget {
-  const _BlockRow({required this.block});
-
-  final ScheduleInstance block;
+/// 卡片标题行：标题 + 右侧补充（计数/动作）
+class _CardHead extends StatelessWidget {
+  const _CardHead({
+    required this.title,
+    this.sub,
+    this.trailing,
+    this.padding = const EdgeInsets.only(bottom: AppSpacing.s12),
+  });
+  final String title;
+  final String? sub;
+  final Widget? trailing;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
-    final color = SchedulePalette.of(block.colorIndex, dark: dark);
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadii.rLg),
-        onTap: () => context.openScheduleEdit(instanceId: block.id),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.cardPad),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(AppRadii.rSm),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      block.title,
-                      style: AppType.headline.copyWith(color: p.onSurface),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      formatMinutes(block.startMinutes),
-                      style: AppType.caption.copyWith(color: p.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: AppType.headline.copyWith(color: p.onSurface),
           ),
-        ),
+          if (sub != null) ...[
+            const SizedBox(width: AppSpacing.s8),
+            Text(
+              sub!,
+              style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+            ),
+          ],
+          const Spacer(),
+          if (trailing != null) trailing!,
+        ],
       ),
     );
   }
 }
 
+// ─────────────────────────── ① 此刻心情卡 ───────────────────────────
+
+class _MoodBento extends ConsumerWidget {
+  const _MoodBento({required this.moods, required this.diaries});
+
+  final Stream<List<Mood>> moods;
+  final Stream<List<Diary>> diaries;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _BentoCard(
+      child: _MoodCheckin(moods: moods, diaries: diaries),
+    );
+  }
+}
+
+/// 心情打卡（原首页组件，去掉外 Padding 以适配卡片内布局）
 class _MoodCheckin extends ConsumerStatefulWidget {
   const _MoodCheckin({required this.moods, required this.diaries});
 
@@ -217,7 +184,6 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final p = Theme.of(context).colorScheme;
     return StreamBuilder<List<Mood>>(
       stream: widget.moods,
       builder: (context, moodSnap) {
@@ -238,13 +204,13 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
               ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
             final current =
                 withMood.isEmpty ? null : withMood.first.moodId;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 今天/昨天切换
-                  Row(
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CardHead(
+                  title: '此刻心情',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _DayToggle(
                         label: '今天',
@@ -257,59 +223,49 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
                         selected: _dayOffset == 1,
                         onTap: () => setState(() => _dayOffset = 1),
                       ),
-                      const Spacer(),
-                      Text(
-                        _dayOffset == 0
-                            ? '今日心情'
-                            : '补昨天心情',
-                        style: AppType.caption.copyWith(
-                          color: p.onSurfaceVariant,
-                        ),
+                    ],
+                  ),
+                ),
+                _MoodWeekStrip(
+                  diaries: all,
+                  moods: moods,
+                  dark: dark,
+                ),
+                const SizedBox(height: AppSpacing.s12),
+                Wrap(
+                  spacing: AppSpacing.s8,
+                  runSpacing: AppSpacing.s8,
+                  children: [
+                    for (final m in moods)
+                      _MoodChip(
+                        mood: m,
+                        selected: current == m.id,
+                        dark: dark,
+                        onTap: () async {
+                          final diaryId = targetDiaries.isEmpty
+                              ? null
+                              : targetDiaries.first.id;
+                          final repo = ref.read(diaryRepoProvider);
+                          if (diaryId == null) {
+                            // 当日无日记：先建一条，只记心情
+                            final id = await repo.save(
+                              id: null,
+                              title: '',
+                              content: '',
+                              extra: m.id,
+                            );
+                            await repo.setMood(diaryId: id, moodId: m.id);
+                          } else {
+                            await repo.setMood(
+                              diaryId: diaryId,
+                              moodId: current == m.id ? null : m.id,
+                            );
+                          }
+                        },
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.s8),
-                  _MoodWeekStrip(
-                    diaries: all,
-                    moods: moods,
-                    dark: dark,
-                  ),
-                  const SizedBox(height: AppSpacing.s12),
-                  Wrap(
-                    spacing: AppSpacing.s8,
-                    runSpacing: AppSpacing.s8,
-                    children: [
-                      for (final m in moods)
-                        _MoodChip(
-                          mood: m,
-                          selected: current == m.id,
-                          dark: dark,
-                          onTap: () async {
-                            final diaryId = targetDiaries.isEmpty
-                                ? null
-                                : targetDiaries.first.id;
-                            final repo = ref.read(diaryRepoProvider);
-                            if (diaryId == null) {
-                              // 当日无日记：先建一条，只记心情
-                              final id = await repo.save(
-                                id: null,
-                                title: '',
-                                content: '',
-                                extra: m.id,
-                              );
-                              await repo.setMood(diaryId: id, moodId: m.id);
-                            } else {
-                              await repo.setMood(
-                                diaryId: diaryId,
-                                moodId: current == m.id ? null : m.id,
-                              );
-                            }
-                          },
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             );
           },
         );
@@ -494,8 +450,10 @@ class _MoodChip extends StatelessWidget {
   }
 }
 
-class _RecentDiaries extends StatelessWidget {
-  const _RecentDiaries({required this.stream, required this.moods});
+// ─────────────────────────── ② 今日日记卡 ───────────────────────────
+
+class _TodayDiariesBento extends StatelessWidget {
+  const _TodayDiariesBento({required this.stream, required this.moods});
 
   final Stream<List<Diary>> stream;
   final Stream<List<Mood>> moods;
@@ -513,113 +471,71 @@ class _RecentDiaries extends StatelessWidget {
         return StreamBuilder<List<Diary>>(
           stream: stream,
           builder: (context, snap) {
-            final list = (snap.data ?? const <Diary>[]).take(3).toList();
-            if (list.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.cardPad),
-                    child: Column(
-                      children: [
-                        Text(
-                          '还没有日记',
-                          style: AppType.headline.copyWith(color: p.onSurface),
-                        ),
-                        const SizedBox(height: AppSpacing.s8),
-                        Text(
-                          '记下今天的一天吧',
-                          style: AppType.body.copyWith(color: p.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        FilledButton.icon(
-                          onPressed: () => context.openDiaryEditor(),
-                          icon: PhosphorIcon(
-                            PhosphorIconsRegular.penNib,
-                            size: 18,
-                            color: p.onPrimary,
-                          ),
-                          label: const Text('写一篇'),
-                        ),
-                      ],
+            final now = DateTime.now();
+            final todayDay = now.year * 10000 + now.month * 100 + now.day;
+            final list = (snap.data ?? const <Diary>[])
+                .where((d) => d.dateDay == todayDay)
+                .toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            final shown = list.take(4).toList();
+
+            return _BentoCard(
+              onTap: shown.isEmpty ? () => context.openDiaryEditor() : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _CardHead(
+                    title: '今日日记',
+                    sub: list.isEmpty ? null : '${list.length} 篇',
+                    trailing: TextActionButton(
+                      label: '全部',
+                      onPressed: () => context.openDiarySearch(),
                     ),
                   ),
-                ),
-              );
-            }
-            return Column(
-              children: [
-                for (var i = 0; i < list.length; i++)
-                  StaggeredEntrance(
-                    index: i,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.page, 0, AppSpacing.page, AppSpacing.s8,
-                      ),
-                      child: Card(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(AppRadii.rLg),
-                          onTap: () => context.openDiaryDetail(list[i].id),
-                          child: Padding(
-                            padding: const EdgeInsets.all(AppSpacing.cardPad),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        list[i].title.isEmpty
-                                            ? list[i].summary
-                                            : list[i].title,
-                                        style: AppType.headline
-                                            .copyWith(color: p.onSurface),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (list[i].moodId != null &&
-                                        moodMap[list[i].moodId!] != null) ...[
-                                      const SizedBox(width: AppSpacing.s8),
-                                      MoodDot(
-                                        color: MoodPalette.colorOf(
-                                          moodMap[list[i].moodId!]!.hue,
-                                          dark: dark,
-                                        ),
-                                      ),
-                                    ],
-                                    Text(
-                                      DateFormat('M月d日').format(
-                                        DateTime(
-                                          list[i].dateDay ~/ 10000,
-                                          (list[i].dateDay ~/ 100) % 100,
-                                          list[i].dateDay % 100,
-                                        ),
-                                      ),
-                                      style: AppType.caption
-                                          .copyWith(color: p.onSurfaceVariant),
-                                    ),
-                                  ],
-                                ),
-                                if (list[i].title.isNotEmpty &&
-                                    list[i].summary.isNotEmpty) ...[
-                                  const SizedBox(height: AppSpacing.s4),
-                                  Text(
-                                    list[i].summary,
-                                    style: AppType.body
-                                        .copyWith(color: p.onSurfaceVariant),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
+                  if (shown.isEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PhosphorIcon(
+                              PhosphorIconsRegular.penNib,
+                              size: 22,
+                              color: p.onSurfaceVariant,
                             ),
-                          ),
+                            const SizedBox(height: AppSpacing.s8),
+                            Text(
+                              '今天还没记',
+                              style: AppType.body
+                                  .copyWith(color: p.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: AppSpacing.s4),
+                            Text(
+                              '点这里写一篇',
+                              style: AppType.caption
+                                  .copyWith(color: p.onSurfaceVariant),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ),
-              ],
+                    )
+                  else
+                    for (var i = 0; i < shown.length; i++) ...[
+                      _DiaryLine(
+                        diary: shown[i],
+                        moodColor: shown[i].moodId != null &&
+                                moodMap[shown[i].moodId!] != null
+                            ? MoodPalette.colorOf(
+                                moodMap[shown[i].moodId!]!.hue,
+                                dark: dark,
+                              )
+                            : null,
+                      ),
+                      if (i != shown.length - 1)
+                        const Divider(height: 1, indent: 0),
+                    ],
+                ],
+              ),
             );
           },
         );
@@ -628,3 +544,189 @@ class _RecentDiaries extends StatelessWidget {
   }
 }
 
+/// 今日日记卡内单行
+class _DiaryLine extends StatelessWidget {
+  const _DiaryLine({required this.diary, required this.moodColor});
+  final Diary diary;
+  final Color? moodColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final created = diary.createdAt;
+    final sameDay = created.year == now.year &&
+        created.month == now.month &&
+        created.day == now.day;
+    return InkWell(
+      onTap: () => context.openDiaryDetail(diary.id),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
+        child: Row(
+          children: [
+            if (moodColor != null) ...[
+              MoodDot(color: moodColor!),
+              const SizedBox(width: AppSpacing.s8),
+            ],
+            Expanded(
+              child: Text(
+                diary.title.isEmpty ? diary.summary : diary.title,
+                style: AppType.body.copyWith(
+                  color: p.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s8),
+            Text(
+              sameDay
+                  ? DateFormat('HH:mm').format(created)
+                  : DateFormat('M月d日').format(created),
+              style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────── ③ 今日日程卡 ───────────────────────────
+
+class _ScheduleBento extends StatelessWidget {
+  const _ScheduleBento({required this.stream});
+
+  final Stream<List<ScheduleInstance>> stream;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<ScheduleInstance>>(
+      stream: stream,
+      builder: (context, snap) {
+        final now = DateTime.now();
+        final nowMinutes = now.hour * 60 + now.minute;
+        final todayDay =
+            now.year * 10000 + now.month * 100 + now.day;
+        final list = (snap.data ?? const <ScheduleInstance>[]).where(
+          (b) =>
+              b.status == BlockStatus.pending &&
+              b.dateDay == todayDay &&
+              b.endMinutes >= nowMinutes,
+        ).toList();
+        final next = list.isEmpty
+            ? null
+            : list.reduce((a, b) =>
+                a.startMinutes <= b.startMinutes ? a : b);
+
+        return _BentoCard(
+          onTap: () => context.push('/schedule'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _CardHead(title: '今日日程', padding: EdgeInsets.zero),
+              const Spacer(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${list.length}',
+                    style: AppType.display.copyWith(
+                      color: p.primary,
+                      fontSize: 34,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.s4),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Text(
+                      '项待办',
+                      style: AppType.caption.copyWith(
+                        color: p.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s4),
+              Text(
+                next == null
+                    ? '今天没有安排了'
+                    : '下一项 ${formatMinutes(next.startMinutes)}',
+                style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────── ④ 待办卡 ───────────────────────────
+
+class _TodoBento extends StatelessWidget {
+  const _TodoBento({required this.stream});
+
+  final Stream<List<Todo>> stream;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Todo>>(
+      stream: stream,
+      builder: (context, snap) {
+        final open = (snap.data ?? const <Todo>[])
+            .where((t) => !t.done)
+            .toList();
+        final shown = open.take(2).toList();
+
+        return _BentoCard(
+          onTap: () => context.go('/todo'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _CardHead(title: '待办', padding: EdgeInsets.zero),
+              const Spacer(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${open.length}',
+                    style: AppType.display.copyWith(
+                      color: p.primary,
+                      fontSize: 34,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.s4),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Text(
+                      '未完成',
+                      style: AppType.caption.copyWith(
+                        color: p.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s4),
+              Text(
+                shown.isEmpty
+                    ? '全部完成'
+                    : shown.map((t) => t.title).join(' · '),
+                style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

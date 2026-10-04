@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 待办小组件 2x2：大数字未完成数 + 最多 2 条 -->
+<!-- 待办小组件 2x2：大数字未完成数 + 最多 2 条。
+     注意：RemoteViews 布局只支持 TextView/ImageView/LinearLayout 等，
+     裸 View 与 Space 会导致桌面显示 "Problem loading"，必须避开。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -22,7 +24,7 @@
             android:textStyle="bold"
             android:textColor="@color/widget_ink" />
 
-        <Space
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
@@ -64,7 +66,7 @@
             android:textColor="@color/widget_ink_soft" />
     </LinearLayout>
 
-    <Space
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="10dp" />
 
@@ -76,9 +78,11 @@
         android:gravity="center_vertical"
         android:paddingBottom="6dp">
 
-        <View
+        <TextView
             android:layout_width="18dp"
             android:layout_height="18dp"
+            android:text=""
+            android:maxLines="1"
             android:background="@drawable/widget_check_ring" />
 
         <TextView
@@ -100,9 +104,11 @@
         android:gravity="center_vertical"
         android:paddingBottom="6dp">
 
-        <View
+        <TextView
             android:layout_width="18dp"
             android:layout_height="18dp"
+            android:text=""
+            android:maxLines="1"
             android:background="@drawable/widget_check_ring" />
 
         <TextView

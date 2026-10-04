@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 待办小组件 4x2：标题行 + 最多 3 条未完成（点条目勾选） -->
+<!-- 待办小组件 4x2：标题行 + 最多 3 条未完成（点条目勾选）。
+     注意：RemoteViews 布局只支持 TextView/ImageView/LinearLayout 等，
+     裸 View 与 Space 会导致桌面显示 "Problem loading widget"，必须避开。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -30,7 +32,7 @@
             android:textSize="13sp"
             android:textColor="@color/widget_primary" />
 
-        <Space
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
@@ -47,7 +49,7 @@
             android:textColor="@color/widget_primary" />
     </LinearLayout>
 
-    <Space
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="10dp" />
 
@@ -59,9 +61,11 @@
         android:gravity="center_vertical"
         android:paddingBottom="8dp">
 
-        <View
+        <TextView
             android:layout_width="18dp"
             android:layout_height="18dp"
+            android:text=""
+            android:maxLines="1"
             android:background="@drawable/widget_check_ring" />
 
         <TextView
@@ -83,9 +87,11 @@
         android:gravity="center_vertical"
         android:paddingBottom="8dp">
 
-        <View
+        <TextView
             android:layout_width="18dp"
             android:layout_height="18dp"
+            android:text=""
+            android:maxLines="1"
             android:background="@drawable/widget_check_ring" />
 
         <TextView
@@ -107,9 +113,11 @@
         android:gravity="center_vertical"
         android:paddingBottom="8dp">
 
-        <View
+        <TextView
             android:layout_width="18dp"
             android:layout_height="18dp"
+            android:text=""
+            android:maxLines="1"
             android:background="@drawable/widget_check_ring" />
 
         <TextView

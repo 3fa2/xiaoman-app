@@ -3,13 +3,23 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '6cce5aed-bba2-4442-976a-1a76ffe35899'
-  PropagateID: '6cce5aed-bba2-4442-976a-1a76ffe35899'
-  ReservedCode1: '2a475a95-8fa2-4eb7-bfbe-c1075a0a5adb'
-  ReservedCode2: '2a475a95-8fa2-4eb7-bfbe-c1075a0a5adb'
+  ProduceID: '46d1d009-2715-4eec-a1db-e0e93c7c4faf'
+  PropagateID: '46d1d009-2715-4eec-a1db-e0e93c7c4faf'
+  ReservedCode1: '0c4b77e1-c1b5-4ad3-8f89-bc0bac82160d'
+  ReservedCode2: '0c4b77e1-c1b5-4ad3-8f89-bc0bac82160d'
 ---
 
 # CHANGELOG — 小满（原「三位一体」）
+
+## v5.0.1+26（2026-10-04）· 首页 Bento 布局 + 小组件加载修复
+
+- **首页改成 S2 Bento 布局**（沿用此前确认过的"4 版页面结构方案对比"里的第 2 版，配色仍是 v4 雾蓝、不动 token 与数据层）：
+  - 全宽「此刻心情」卡：今天/昨天切换 + 近 7 天点带 + 心情快速打卡（补昨天照旧）
+  - 不等高网格：左「今日日记」高卡（今日篇数 + 时间线行，空态可点新建）｜右竖排「今日日程」（剩余 N 项 + 下一项时间，点击进日程）和「待办」（未完成 N + 前两条，点击切待办 tab）
+- **桌面小组件加载报错修复（真 bug）**：桌面上添加小组件显示"Problem loading widget"——RemoteViews 布局里用了裸 `<View>` 和 `<Space>`，这两类不在 AppWidget 支持的白名单里，系统加载布局直接抛异常 → 勾选圈全部改成 TextView（空文本 + 圆环 drawable），占位 Space 改成 LinearLayout；两种规格同步修复
+- 版本 5.0.1+26；测试 58/58；analyze 0 error/0 warning；架构 0 违规
+
+⚠️ 未实测项同 v5.0.0：小组件在真实桌面上的添加/勾选/刷新表现、待办提醒真机响铃、[+] 冷启动直达（本轮已修 RemoteViews 布局错误，需装机复验）
 
 ## v5.0.0+25（2026-10-04）· 独立待办 + 桌面小组件
 
