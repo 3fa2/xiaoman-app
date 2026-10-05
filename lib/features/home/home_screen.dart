@@ -242,11 +242,15 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
                         selected: current == m.id,
                         dark: dark,
                         onTap: () async {
-                          final diaryId = targetDiaries.isEmpty
-                              ? null
-                              : targetDiaries.first.id;
+                          // 写入目标必须与上方读取目标一致（最新创建且带心情的一篇），
+                          // 否则同日多篇时点心情会写进旧日记、界面看起来"没反应"
+                          final target = withMood.isNotEmpty
+                              ? withMood.first
+                              : (targetDiaries.isEmpty
+                                  ? null
+                                  : targetDiaries.first);
                           final repo = ref.read(diaryRepoProvider);
-                          if (diaryId == null) {
+                          if (target == null) {
                             // 当日无日记：先建一条，只记心情
                             final id = await repo.save(
                               id: null,
@@ -257,7 +261,7 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
                             await repo.setMood(diaryId: id, moodId: m.id);
                           } else {
                             await repo.setMood(
-                              diaryId: diaryId,
+                              diaryId: target.id,
                               moodId: current == m.id ? null : m.id,
                             );
                           }

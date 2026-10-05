@@ -84,15 +84,19 @@ class WidgetSync {
   }
 
   static void _pushTodos(List<Todo> todos) {
-    // 只推未完成的（小组件只显示未完成列表）
+    // 只推未完成的（小组件只显示未完成列表，截断 8 条）；
+    // count 单独推真实未完成总数——否则 9 条以上时小组件大数字永远显示 8
+    final open = todos.where((t) => !t.done).toList();
     final json = jsonEncode(
-      todos
-          .where((t) => !t.done)
+      open
           .take(8)
           .map((t) => {'id': t.id, 'title': t.title, 'done': false})
           .toList(),
     );
-    _ch.invokeMethod<void>('updateTodos', {'todos': json}).catchError((_) {});
+    _ch.invokeMethod<void>('updateTodos', {
+      'todos': json,
+      'count': open.length,
+    }).catchError((_) {});
   }
 
   static void _handleAction(WidgetRef ref, String? action) {

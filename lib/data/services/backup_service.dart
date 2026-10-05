@@ -37,6 +37,9 @@ class BackupServiceImpl {
     data['todoItems'] = (await _db.select(_db.todoItems).get())
         .map((r) => r.toJson())
         .toList();
+    // v5.0 独立待办表（todos）此前漏导出：换机恢复后待办全丢（v5.0.4 修复）
+    data['todos'] =
+        (await _db.select(_db.todos).get()).map((r) => r.toJson()).toList();
     data['scheduleTemplates'] = (await _db.select(_db.scheduleTemplates).get())
         .map((r) => r.toJson())
         .toList();
@@ -100,6 +103,8 @@ class BackupServiceImpl {
       await _db.delete(_db.todoItems).go();
       await _db.delete(_db.notes).go();
       await _db.delete(_db.notebooks).go();
+      // 独立待办（此前漏清：导入后旧待办残留）
+      await _db.delete(_db.todos).go();
       // 日程
       await _db.delete(_db.scheduleInstances).go();
       await _db.delete(_db.scheduleTemplates).go();
@@ -141,6 +146,11 @@ class BackupServiceImpl {
       for (final row in (data['todoItems'] as List?) ?? []) {
         await _db.into(_db.todoItems).insertOnConflictUpdate(
               TodoItemRow.fromJson(row as Map<String, dynamic>),
+            );
+      }
+      for (final row in (data['todos'] as List?) ?? []) {
+        await _db.into(_db.todos).insertOnConflictUpdate(
+              TodoRow.fromJson(row as Map<String, dynamic>),
             );
       }
       for (final row in (data['scheduleTemplates'] as List?) ?? []) {

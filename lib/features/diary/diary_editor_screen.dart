@@ -299,8 +299,6 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   }
   // ---- 媒体导入 ----
   Future<void> _pickMedia() async {
-    final ownerId = await _ensureEntityId();
-    setState(() {}); // 刷新媒体流 owner
     final assets = await AssetPicker.pickAssets(
       context,
       pickerConfig: const AssetPickerConfig(
@@ -309,6 +307,9 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       ),
     );
     if (assets == null || assets.isEmpty) return;
+    // 选完再建实体：先建的话用户取消选择会留下一条空日记占位行
+    final ownerId = await _ensureEntityId();
+    if (mounted) setState(() {}); // 刷新媒体流 owner
     final repo = ref.read(mediaRepoProvider);
     for (final asset in assets) {
       final file = await asset.originFile;

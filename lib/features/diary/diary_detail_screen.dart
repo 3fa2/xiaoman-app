@@ -114,7 +114,17 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
         future: diary,
         builder: (context, snap) {
           final d = snap.data;
-          if (d == null) return const SkeletonList(itemCount: 2);
+          // null（日记不存在/已删）给空态兜底，不能永远停在骨架屏
+          if (snap.connectionState != ConnectionState.done) {
+            return const SkeletonList(itemCount: 2);
+          }
+          if (d == null) {
+            return const EmptyState(
+              icon: PhosphorIconsRegular.notebook,
+              title: '这篇日记不存在或已被删除',
+              hint: '回到列表看看其他日记吧',
+            );
+          }
           return ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,

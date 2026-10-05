@@ -14,8 +14,10 @@ object WidgetChannelBridge {
         channel?.invokeMethod("widgetToggle", id)
     }
 
-    fun pushTodos(context: Context, todosJson: String) {
-        // Flutter 侧推来的全量待办 JSON，解析后写入 SharedPreferences
+    fun pushTodos(context: Context, todosJson: String, count: Int = -1) {
+        // Flutter 侧推来的全量待办 JSON，解析后写入 SharedPreferences。
+        // 推送 = App 内数据已是权威状态：此刻应清掉 pending 勾选队列，
+        // 否则队列里的陈旧 id 会在下次启动把用户在 App 内的取消勾选改回去。
         try {
             val arr = org.json.JSONArray(todosJson)
             val list = (0 until arr.length()).map { i ->
@@ -26,7 +28,8 @@ object WidgetChannelBridge {
                     done = o.optBoolean("done", false),
                 )
             }
-            TodoWidgetStore.setTodos(context, list)
+            TodoWidgetStore.setTodos(context, list, count)
+            TodoWidgetStore.clearPendingToggles(context)
             TodoWidgetData.refreshAll(context)
         } catch (e: Exception) {
             // 解析失败不影响主流程

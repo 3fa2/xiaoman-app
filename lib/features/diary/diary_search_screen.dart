@@ -249,6 +249,7 @@ class _SearchResults extends ConsumerStatefulWidget {
 
 class _SearchResultsState extends ConsumerState<_SearchResults> {
   List<Diary>? _results;
+  int _seq = 0; // 请求序号：慢查询返回晚于新查询时丢弃过期结果
 
   @override
   void didUpdateWidget(covariant _SearchResults oldWidget) {
@@ -268,8 +269,9 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
   Future<void> _run() async {
     final q = widget.query;
     if (q.isEmpty) return;
+    final seq = ++_seq;
     final r = await ref.read(diaryRepoProvider).search(q);
-    if (!mounted) return;
+    if (!mounted || seq != _seq) return;
     setState(() => _results = r);
   }
 

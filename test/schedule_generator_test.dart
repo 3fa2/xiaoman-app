@@ -107,6 +107,22 @@ void main() {
     expect(missing.any((m) => m.dateDay == 20260908), isFalse);
   });
 
+  test('detached 实例被拖走后该日不补生成（不产生原时段副本）', () {
+    // 回归：实例被拖到 14:00（与模板 9:00 不重叠）后，
+    // regenerate 不得在 9:00 重新生成原时段副本
+    final missing = ScheduleGenerator.missing(
+      templates: [_tpl(1, 'FREQ=DAILY', 9 * 60)],
+      existing: [
+        _existing(
+          templateId: 1, dateDay: 20260908, start: 14 * 60, detached: true,
+        ),
+      ],
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+    expect(missing.any((m) => m.dateDay == 20260908), isFalse);
+  });
+
   test('禁用模板不生成', () {
     final missing = ScheduleGenerator.missing(
       templates: [_tpl(1, 'FREQ=DAILY', 9 * 60, enabled: false)],

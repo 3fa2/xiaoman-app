@@ -166,6 +166,8 @@ class _DayBlockRow extends ConsumerWidget {
                   await ref
                       .read(scheduleRepoProvider)
                       .setStatus(id: block.id, status: next);
+                  // 标记完成/恢复都要重排提醒：否则已完成块的闹钟照响（幽灵通知）
+                  ref.read(reminderWarningsProvider.notifier).syncNow();
                 },
                 icon: PhosphorIcon(
                   done

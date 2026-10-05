@@ -20,6 +20,7 @@ class NoteSearchScreen extends ConsumerStatefulWidget {
 class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
   String _query = '';
   List<Note>? _results;
+  int _seq = 0; // 请求序号：慢查询返回晚于新查询时丢弃过期结果
 
   void _run(String v) async {
     setState(() => _query = v);
@@ -27,8 +28,10 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
       setState(() => _results = null);
       return;
     }
+    final seq = ++_seq;
     final r = await ref.read(noteRepoProvider).searchNotes(v);
-    if (mounted) setState(() => _results = r);
+    if (!mounted || seq != _seq) return;
+    setState(() => _results = r);
   }
 
   @override

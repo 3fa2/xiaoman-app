@@ -72,9 +72,10 @@ class ScheduleGenerator {
           dates.removeWhere((d) => d > t.endDate!);
         }
       }
-      // 本模板自己的既有实例（未 detach）不算冲突（幂等重生成）
+      // 本模板自己的既有实例（含 detach：用户改过时间的实例代表该日
+      // 已有此模板的安排，再生成会冒出原时段副本）不算缺失（幂等重生成）
       final ownExisting = existing
-          .where((e) => e.templateId == t.id && !e.detached)
+          .where((e) => e.templateId == t.id)
           .map((e) => e.dateDay)
           .toSet();
 

@@ -126,10 +126,22 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
     final ok = await showConfirmSheet(
       context,
       title: '删除这个时间块？',
-      message: '模板本身的规则不受影响',
+      message: '重复日程的这一天会记为例外，模板其他日期不受影响',
     );
     if (!ok) return;
-    await ref.read(scheduleRepoProvider).deleteInstance(widget.instanceId!);
+    final repo = ref.read(scheduleRepoProvider);
+    final inst = await repo.getInstance(widget.instanceId!);
+    if (inst != null && inst.templateId != null) {
+      // 模板实例走 EXDATE 语义：物理删除后 regenerate 会在下次启动把它重新生成
+      final tpl = await repo.getTemplate(inst.templateId!);
+      if (tpl != null) {
+        await repo.skipTemplateOccurrence(template: tpl, dateDay: inst.dateDay);
+      } else {
+        await repo.deleteInstance(inst.id);
+      }
+    } else if (inst != null) {
+      await repo.deleteInstance(inst.id);
+    }
     if (mounted) {
       ref.read(reminderWarningsProvider.notifier).syncNow();
       context.pop();

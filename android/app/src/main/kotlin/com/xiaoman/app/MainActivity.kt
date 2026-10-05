@@ -59,9 +59,10 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(null)
                     }
                     "updateTodos" -> {
-                        // Flutter 侧推送全量待办 JSON
+                        // Flutter 侧推送全量待办 JSON + 真实未完成总数
                         val json = call.argument<String>("todos") ?: ""
-                        WidgetChannelBridge.pushTodos(applicationContext, json)
+                        val count = call.argument<Int>("count") ?: -1
+                        WidgetChannelBridge.pushTodos(applicationContext, json, count)
                         result.success(null)
                     }
                     "getLaunchAction" -> {

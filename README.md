@@ -10,7 +10,7 @@ _满而未满，刚刚好。_
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white)](https://dart.dev)
 [![Platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)](https://android.com)
-[![Tests](https://img.shields.io/badge/tests-58%20passing-3DDC84)](#构建)
+[![Tests](https://img.shields.io/badge/tests-59%20passing-3DDC84)](#构建)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/3fa2/xiaoman-app/pulls)
 
@@ -130,7 +130,7 @@ flowchart LR
 git clone https://github.com/3fa2/xiaoman-app.git
 cd xiaoman-app
 flutter pub get
-flutter test                          # 58 个测试
+flutter test                          # 59 个测试
 flutter build apk --release           # 产物 build/app/outputs/flutter-apk/
 ```
 

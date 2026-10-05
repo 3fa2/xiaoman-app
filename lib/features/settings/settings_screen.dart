@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../app/router.dart';
 import '../../design/tokens.dart';
 import '../../di/providers.dart';
 import '../shared/widgets.dart';
@@ -297,6 +298,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     if (ok == null) return;
     final repo = ref.read(settingsRepoProvider);
+    final gate = ref.read(lockGateProvider);
     if (ok) {
       final pin = pinCtrl.text.trim();
       if (pin.length != 6) {
@@ -307,9 +309,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         }
         return;
       }
-      await repo.set('lock_pin_hash', sha256Hex(pin));
+      final hash = sha256Hex(pin);
+      await repo.set('lock_pin_hash', hash);
+      // LockGate 只在启动时读库：这里必须同步内存态，否则本次进程内锁不生效。
+      // 立即上锁并跳锁屏（输一次刚设的 PIN），后台切回即受保护。
+      await gate.load(hash);
+      gate.unlocked = false;
+      if (mounted) ref.read(routerProvider).refresh();
     } else {
       await repo.set('lock_pin_hash', '');
+      await gate.load('');
+      if (mounted) ref.read(routerProvider).refresh();
     }
     _check();
   }
@@ -328,6 +338,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final result = await ref.read(backupProvider).importFromJsonFile();
+      // 导入覆盖了日程实例：已排闹钟还是旧数据的，必须全量重建
+      await ref.read(reminderWarningsProvider.notifier).syncNow();
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(

@@ -115,7 +115,10 @@ class AutosaveController {
     String esc(String s) => s
         .replaceAll('\\', r'\\')
         .replaceAll('"', r'\"')
-        .replaceAll('\n', r'\n');
+        .replaceAll('\n', r'\n')
+        // \r/\t 不转义会产出非法 JSON（jsonDecode 抛错），恢复正则也在 \r 处截断
+        .replaceAll('\r', r'\r')
+        .replaceAll('\t', r'\t');
     return '{"title":"${esc(title)}","content":"${esc(content)}",'
         '"extra":${extra ?? 'null'}}';
   }
