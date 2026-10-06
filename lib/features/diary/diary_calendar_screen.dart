@@ -25,6 +25,7 @@ class DiaryCalendarScreen extends ConsumerStatefulWidget {
 class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
   DateTime _focused = DateTime.now();
   int _selectedDay = _dayOf(DateTime.now());
+  bool _listMode = false; // v5.3：日历 / 时间线列表双模式
 
   /// 当前日记本过滤：null = 所有日记，-1 = 未归本，>0 = 具体本
   int? _notebookFilter;
@@ -47,6 +48,17 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
       appBar: AppBar(
         title: Text(_filterName),
         actions: [
+          // 日历/时间线切换
+          IconButton(
+            onPressed: () => setState(() => _listMode = !_listMode),
+            tooltip: _listMode ? '日历视图' : '时间线视图',
+            icon: PhosphorIcon(
+              _listMode
+                  ? PhosphorIconsRegular.calendarBlank
+                  : PhosphorIconsRegular.listDashes,
+              color: p.onSurfaceVariant,
+            ),
+          ),
           // 统计入口带文字，不再让用户猜图标是干嘛的
           TextButton.icon(
             onPressed: () => context.openMoodTrend(),
@@ -74,9 +86,13 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
       floatingActionButton: AppFab(
         icon: PhosphorIconsRegular.notePencil,
         tooltip: '写日记',
-        onPressed: () => context.openDiaryEditor(null, _notebookFilter),
+        // 写选中的那天（选了过去某天即补记）
+        onPressed: () =>
+            context.openDiaryEditor(null, _notebookFilter, _selectedDay),
       ),
-      body: Column(
+      body: _listMode
+          ? _buildTimeline(p, dark)
+          : Column(
         children: [
           Card(
             margin: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
@@ -186,10 +202,14 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
                   builder: (context, snap) {
                     final list = snap.data ?? const <Diary>[];
                     if (list.isEmpty) {
-                      return const EmptyState(
+                      return EmptyState(
                         icon: PhosphorIconsRegular.notebook,
                         title: '这一天还没有日记',
                         hint: '点右下角的笔写下今天，也可以插照片、记心情',
+                        actionLabel: '补记这一天的日记',
+                        onAction: () => context.openDiaryEditor(
+                          null, _notebookFilter, _selectedDay,
+                        ),
                       );
                     }
                     return ListView.builder(
@@ -214,6 +234,74 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ---- 时间线列表模式（v5.3）：按月分组的全部日记 ----
+  Widget _buildTimeline(ColorScheme p, bool dark) {
+    return StreamBuilder<List<Diary>>(
+      stream: ref.watch(diaryRepoProvider).watchAll(),
+      builder: (context, snap) {
+        final list = snap.data ?? const <Diary>[];
+        if (snap.connectionState == ConnectionState.waiting && list.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(AppSpacing.page),
+            child: SkeletonList(),
+          );
+        }
+        if (list.isEmpty) {
+          return const EmptyState(
+            icon: PhosphorIconsRegular.notebook,
+            title: '还没有日记',
+            hint: '点右下角的笔写下第一篇',
+          );
+        }
+        return StreamBuilder<List<Mood>>(
+          stream: ref.watch(diaryRepoProvider).watchMoods(),
+          builder: (context, moodSnap) {
+            final moodMap = {
+              for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m,
+            };
+            // watchAll 已按 dateDay desc；同日内保持库序（创建序）
+            final groups = <int, List<Diary>>{};
+            for (final d in list) {
+              groups.putIfAbsent(d.dateDay ~/ 100, () => []).add(d);
+            }
+            final months = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+            final children = <Widget>[];
+            for (final m in months) {
+              final items = groups[m]!;
+              children.add(Padding(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.page,
+                  m == months.first ? AppSpacing.s8 : AppSpacing.s16,
+                  AppSpacing.page,
+                  AppSpacing.s8,
+                ),
+                child: Text(
+                  '${m ~/ 100} 年 ${m % 100} 月 · ${items.length} 篇',
+                  style: AppType.headline.copyWith(color: p.onSurface),
+                ),
+              ));
+              for (final d in items) {
+                children.add(Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.page, 0, AppSpacing.page, AppSpacing.s8,
+                  ),
+                  child: _DiaryCard(
+                    diary: d,
+                    mood: d.moodId == null ? null : moodMap[d.moodId!],
+                  ),
+                ));
+              }
+            }
+            return ListView(
+              padding: const EdgeInsets.only(bottom: AppSpacing.listBottom),
+              children: children,
+            );
+          },
+        );
+      },
     );
   }
 

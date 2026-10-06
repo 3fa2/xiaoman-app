@@ -213,6 +213,7 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
     required String title,
     required String content,
     required int? extra,
+    int? dateDay, // 备忘无日期概念，忽略（接口与日记共用）
   }) async {
     // 自动保存通道：更新已有笔记时绝不碰 tags/pinned（由编辑器专用通道管理），
     // 否则打字触发的每次自动保存都会清空标签和置顶（真机曾发生的丢数据路径）。

@@ -9,6 +9,7 @@ class Diary {
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt; // 回收站：非空=已软删除（v7）
 
   const Diary({
     required this.id,
@@ -20,6 +21,7 @@ class Diary {
     required this.moodId,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
   });
 
   String get summary {

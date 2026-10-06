@@ -33,6 +33,7 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
   late final TextEditingController _titleCtrl;
   int? _dueDay; // yyyymmdd，null=无期限
   int? _remindBefore; // 提前提醒分钟数，null=到点即提醒
+  String? _repeat; // v5.3 循环：daily/weekly/monthly（null=不重复）
 
   bool get _editing => widget.existing != null;
 
@@ -42,6 +43,7 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
     _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
     _dueDay = widget.existing?.dueDay;
     _remindBefore = widget.existing?.remindBefore;
+    _repeat = widget.existing?.repeat;
   }
 
   @override
@@ -87,14 +89,22 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
     if (title.isEmpty) return;
     final repo = ref.read(todoRepoProvider);
     final existing = widget.existing;
+    // 循环待办必须有截止日（滚动锚点）；没选截止日就视为不重复
+    final repeat = _dueDay == null ? null : _repeat;
     if (existing == null) {
-      await repo.add(title: title, dueDay: _dueDay, remindBefore: _remindBefore);
+      await repo.add(
+        title: title,
+        dueDay: _dueDay,
+        remindBefore: _remindBefore,
+        repeat: repeat,
+      );
     } else {
       await repo.update(
         id: existing.id,
         title: title,
         dueDay: _dueDay,
         remindBefore: _remindBefore,
+        repeat: repeat,
       );
     }
     if (mounted) Navigator.of(context).pop();
@@ -188,6 +198,26 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
                   label: label,
                   selected: _remindBefore == min,
                   onTap: () => setState(() => _remindBefore = min),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s16),
+          Text('重复', style: AppType.caption.copyWith(color: p.onSurfaceVariant)),
+          const SizedBox(height: AppSpacing.s8),
+          Wrap(
+            spacing: AppSpacing.s8,
+            runSpacing: AppSpacing.s8,
+            children: [
+              for (final (label, value) in const <(String, String?)>[
+                ('不重复', null),
+                ('每天', 'daily'),
+                ('每周', 'weekly'),
+                ('每月', 'monthly'),
+              ])
+                _ChoiceChip(
+                  label: label,
+                  selected: _repeat == value,
+                  onTap: () => setState(() => _repeat = value),
                 ),
             ],
           ),

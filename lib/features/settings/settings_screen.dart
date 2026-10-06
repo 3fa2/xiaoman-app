@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +26,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _hasPin = false;
   bool _exactOk = true;
   bool _notifGranted = true;
+  bool _diaryRemind = false; // v5.3 写日记提醒
+  String _diaryRemindTime = '22:00';
+  bool _autoBackup = true; // v5.3 每日自动备份
+  List<FileSystemEntity> _autoBackups = const [];
 
   @override
   void initState() {
@@ -34,13 +41,115 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final hasPin = await ref.read(settingsRepoProvider).get('lock_pin_hash');
     final exact = await ref.read(notificationServiceProvider).canExact();
     final notif = await Permission.notification.isGranted;
+    final remind = await ref.read(settingsRepoProvider).get('diary_remind_enabled');
+    final remindTime =
+        await ref.read(settingsRepoProvider).get('diary_remind_time') ?? '22:00';
+    final auto = await ref.read(autoBackupProvider).isEnabled();
+    final backups = await ref.read(autoBackupProvider).listBackups();
     if (mounted) {
       setState(() {
         // 空字符串 = 已关闭锁（set('lock_pin_hash', '')），不算开启
         _hasPin = hasPin != null && hasPin.isNotEmpty;
         _exactOk = exact;
         _notifGranted = notif;
+        _diaryRemind = remind == '1';
+        _diaryRemindTime = remindTime;
+        _autoBackup = auto;
+        _autoBackups = backups;
       });
+    }
+  }
+
+  Future<void> _setDiaryRemind(bool v) async {
+    setState(() => _diaryRemind = v);
+    await ref.read(settingsRepoProvider).set('diary_remind_enabled', v ? '1' : '0');
+    unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
+  }
+
+  Future<void> _pickDiaryTime() async {
+    final parts = _diaryRemindTime.split(':');
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: int.tryParse(parts[0]) ?? 22,
+        minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+      ),
+    );
+    if (picked == null) return;
+    final t =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    setState(() => _diaryRemindTime = t);
+    await ref.read(settingsRepoProvider).set('diary_remind_time', t);
+    unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
+  }
+
+  Future<void> _setAutoBackup(bool v) async {
+    setState(() => _autoBackup = v);
+    await ref.read(autoBackupProvider).setEnabled(v);
+  }
+
+  Future<void> _runAutoBackupNow() async {
+    try {
+      final path = await ref.read(autoBackupProvider).runNow();
+      await _check();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已备份：${path.split('/').last}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('备份失败：$e')),
+        );
+      }
+    }
+  }
+
+  static String _autoBackupLabel(FileSystemEntity f) {
+    final name = f.path.split(Platform.pathSeparator).last;
+    return name.replaceAll('auto-backup-', '').replaceAll('.json', '');
+  }
+
+  Future<void> _restoreAutoBackup(FileSystemEntity f) async {
+    final ok = await showConfirmSheet(
+      context,
+      title: '恢复「${_autoBackupLabel(f)}」？',
+      message: '当前所有日记、备忘、日程、待办会被这份备份覆盖，无法撤销',
+    );
+    if (!ok || !mounted) return;
+    try {
+      await ref.read(autoBackupProvider).restoreFrom(f.path);
+      await _check();
+      unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已从自动备份恢复')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('恢复失败：$e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportMarkdown() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在生成 Markdown…')),
+      );
+      await ref.read(backupProvider).shareMarkdown();
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败：$e')),
+        );
+      }
     }
   }
 
@@ -167,6 +276,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           child: const Text('去授权'),
                         ),
                 ),
+                // v5.3：每日写日记提醒
+                const Divider(indent: AppSpacing.cardPad),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.penNib,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '写日记提醒',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    _diaryRemind ? '每天 $_diaryRemindTime 提醒，点通知直达编辑器' : '每天固定时间提醒你写两笔',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_diaryRemind)
+                        TextButton(
+                          onPressed: _pickDiaryTime,
+                          child: Text(
+                            _diaryRemindTime,
+                            style: AppType.label.copyWith(color: p.primary),
+                          ),
+                        ),
+                      Switch(value: _diaryRemind, onChanged: _setDiaryRemind),
+                    ],
+                  ),
+                ),
                 const Divider(indent: AppSpacing.cardPad),
                 Padding(
                   padding: const EdgeInsets.all(AppSpacing.cardPad),
@@ -220,6 +359,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 ListTile(
                   leading: PhosphorIcon(
+                    PhosphorIconsRegular.fileText,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '导出日记（Markdown）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '按月分节的 .md 文件，含心情与标签，方便转移和打印',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  onTap: _exportMarkdown,
+                ),
+                ListTile(
+                  leading: PhosphorIcon(
                     PhosphorIconsRegular.downloadSimple,
                     color: p.onSurfaceVariant,
                   ),
@@ -237,9 +391,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.block),
+          const SectionHeader('数据安全'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.trash,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '回收站（日记）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '删掉的日记保留 30 天，可恢复',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.openDiaryTrash(),
+                ),
+                const Divider(indent: AppSpacing.cardPad),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.shieldCheck,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '每日自动备份',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '打开 App 时静默备份到本机，保留最近 7 份，防损坏防误删',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  trailing: Switch(
+                    value: _autoBackup,
+                    onChanged: (v) {
+                      _setAutoBackup(v);
+                      _check();
+                    },
+                  ),
+                ),
+                ListTile(
+                  leading: const SizedBox(width: 24),
+                  title: Text(
+                    '立即备份一份',
+                    style: AppType.body.copyWith(color: p.primary),
+                  ),
+                  onTap: _runAutoBackupNow,
+                ),
+                // 最近备份可点恢复（自动备份在私有目录，SAF 选不到，必须从这里进）
+                for (final f in _autoBackups.take(3))
+                  ListTile(
+                    leading: const SizedBox(width: 24),
+                    dense: true,
+                    title: Text(
+                      _autoBackupLabel(f),
+                      style: AppType.caption.copyWith(color: p.onSurface),
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => _restoreAutoBackup(f),
+                      child: const Text('恢复'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.block),
           Center(
             child: Text(
-              '小满 v5.0.3 · 本地数据，不联网',
+              '小满 v5.3.1 · 本地数据，不联网',
               style: AppType.caption.copyWith(color: p.onSurfaceVariant),
             ),
           ),
@@ -340,6 +562,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final result = await ref.read(backupProvider).importFromJsonFile();
       // 导入覆盖了日程实例：已排闹钟还是旧数据的，必须全量重建
       await ref.read(reminderWarningsProvider.notifier).syncNow();
+      // 导入会覆盖 settings（含提醒/自动备份配置）：刷新本页状态
+      await _check();
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(

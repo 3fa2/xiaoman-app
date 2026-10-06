@@ -21,6 +21,7 @@ class Diaries extends Table {
   IntColumn get moodId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()(); // v7 回收站：非空=已删
 }
 
 /// ①b 日记本：用户自建分类（v4.3 新增，碎碎念/认知日记/…）
@@ -159,6 +160,7 @@ class Todos extends Table {
   BoolColumn get done => boolean().withDefault(const Constant(false))();
   IntColumn get dueDay => integer().nullable()(); // yyyymmdd 截止日（null=无期限）
   IntColumn get remindBefore => integer().nullable()(); // 提前提醒分钟数（null=到点即提醒）
+  TextColumn get repeat => text().nullable()(); // v7 循环：daily/weekly/monthly（null=不重复）
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();

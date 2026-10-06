@@ -12,6 +12,7 @@ import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'data/services/notification_service.dart';
 import 'di/providers.dart';
+import 'domain/models/media.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,6 +96,7 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
   /// 2. 通知初始化  3. 日程 regenerate（滚动窗口）
   /// 4. 提醒全量重建（uhabits #1509 兜底，不阻塞首帧）
   /// 5. 小组件同步（v5.0）：订阅数据变化刷桌面小组件 + 补取小组件入口动作
+  /// 6. 回收站清理（v5.3：软删除超 30 天的连媒体一起清）+ 每日自动备份
   /// 每步独立容错：一步失败不影响后续
   Future<void> _bootstrap() async {
     final router = ref.read(routerProvider);
@@ -127,6 +129,27 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
     } catch (e) {
       // 小组件事务不影响启动
     }
+
+    // v5.3：回收站过期清理（>30 天）→ 再每日自动备份。
+    // 串行：备份的应是清理后的状态，避免把待清理条目也备进去。
+    unawaited(() async {
+      try {
+        final diaryRepo = ref.read(diaryRepoProvider);
+        final mediaRepo = ref.read(mediaRepoProvider);
+        final cutoff = DateTime.now().subtract(const Duration(days: 30));
+        final stale = await diaryRepo.deletedBefore(cutoff);
+        for (final id in stale) {
+          final items = await mediaRepo.listFor(MediaOwner.diary, id);
+          for (final m in items) {
+            await mediaRepo.remove(m.id);
+          }
+          await diaryRepo.purgeDiary(id);
+        }
+      } catch (e) {
+        // 清理失败下次启动重试
+      }
+      await ref.read(autoBackupProvider).runIfNeeded();
+    }());
   }
 
   @override

@@ -65,6 +65,14 @@ class MainActivity : FlutterFragmentActivity() {
                         WidgetChannelBridge.pushTodos(applicationContext, json, count)
                         result.success(null)
                     }
+                    "updateSchedule" -> {
+                        // v5.3：今日日程小组件推送
+                        val json = call.argument<String>("schedule") ?: ""
+                        val remaining = call.argument<Int>("remaining") ?: 0
+                        val dateDay = call.argument<Int>("dateDay") ?: 0
+                        WidgetChannelBridge.pushSchedule(applicationContext, json, remaining, dateDay)
+                        result.success(null)
+                    }
                     "getLaunchAction" -> {
                         val a = launchAction
                         launchAction = null
@@ -95,6 +103,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 epochMs = (m["epochMs"] as? Number)?.toLong() ?: return@mapNotNull null,
                                 payload = m["payload"] as? String,
                                 channel = m["channel"] as? String ?: "trinity_schedule",
+                                repeatDaily = m["repeatDaily"] as? Boolean ?: false,
                             )
                         }
                         // 先取消旧持久列表里的全部闹钟（filterEquals 不比较 extras，

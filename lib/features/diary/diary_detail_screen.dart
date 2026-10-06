@@ -89,17 +89,10 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
               final ok = await showConfirmSheet(
                 context,
                 title: '删除这篇日记？',
-                message: '删除后找不回来',
+                message: '进入回收站，30 天内可恢复',
               );
               if (!ok || !context.mounted) return;
-              // 级联删媒体文件
-              final items = await ref.read(mediaRepoProvider).listFor(
-                    MediaOwner.diary,
-                    widget.diaryId,
-                  );
-              for (final m in items) {
-                await ref.read(mediaRepoProvider).remove(m.id);
-              }
+              // 软删除：媒体文件保留，彻底删除时才清
               await ref.read(diaryRepoProvider).delete(widget.diaryId);
               if (context.mounted) context.pop();
             },
@@ -187,19 +180,26 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                   child: Wrap(
                     spacing: AppSpacing.s4,
                     children: [
+                      // 标签可点：跳搜索页按该标签预过滤
                       for (final t in d.tags)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.s8, vertical: 2,
+                        GestureDetector(
+                          onTap: () => context.push(
+                            '/diary/search?q=${Uri.encodeComponent(t)}',
                           ),
-                          decoration: BoxDecoration(
-                            color: p.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(AppRadii.rSm),
-                          ),
-                          child: Text(
-                            t,
-                            style: AppType.caption.copyWith(
-                              color: p.onSurfaceVariant,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.s8, vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: p.surfaceContainerHighest,
+                              borderRadius:
+                                  BorderRadius.circular(AppRadii.rSm),
+                            ),
+                            child: Text(
+                              t,
+                              style: AppType.caption.copyWith(
+                                color: p.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ),

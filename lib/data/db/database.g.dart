@@ -68,6 +68,12 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -78,7 +84,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
         notebookId,
         moodId,
         createdAt,
-        updatedAt
+        updatedAt,
+        deletedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -133,6 +140,10 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     return context;
   }
 
@@ -160,6 +171,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
     );
   }
 
@@ -179,6 +192,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   final int? moodId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
   const DiariesRow(
       {required this.id,
       required this.dateDay,
@@ -188,7 +202,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       this.notebookId,
       this.moodId,
       required this.createdAt,
-      required this.updatedAt});
+      required this.updatedAt,
+      this.deletedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -205,6 +220,9 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -222,6 +240,9 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           moodId == null && nullToAbsent ? const Value.absent() : Value(moodId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -238,6 +259,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       moodId: serializer.fromJson<int?>(json['moodId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -253,6 +275,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       'moodId': serializer.toJson<int?>(moodId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -265,7 +288,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           Value<int?> notebookId = const Value.absent(),
           Value<int?> moodId = const Value.absent(),
           DateTime? createdAt,
-          DateTime? updatedAt}) =>
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
       DiariesRow(
         id: id ?? this.id,
         dateDay: dateDay ?? this.dateDay,
@@ -276,6 +300,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
         moodId: moodId.present ? moodId.value : this.moodId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
       );
   DiariesRow copyWithCompanion(DiariesCompanion data) {
     return DiariesRow(
@@ -289,6 +314,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       moodId: data.moodId.present ? data.moodId.value : this.moodId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -303,14 +329,15 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           ..write('notebookId: $notebookId, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, dateDay, title, content, tags, notebookId,
-      moodId, createdAt, updatedAt);
+      moodId, createdAt, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -323,7 +350,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           other.notebookId == this.notebookId &&
           other.moodId == this.moodId &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
 }
 
 class DiariesCompanion extends UpdateCompanion<DiariesRow> {
@@ -336,6 +364,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
   final Value<int?> moodId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
   const DiariesCompanion({
     this.id = const Value.absent(),
     this.dateDay = const Value.absent(),
@@ -346,6 +375,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.moodId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   DiariesCompanion.insert({
     this.id = const Value.absent(),
@@ -357,6 +387,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.moodId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
   })  : dateDay = Value(dateDay),
         createdAt = Value(createdAt),
         updatedAt = Value(updatedAt);
@@ -370,6 +401,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     Expression<int>? moodId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -381,6 +413,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       if (moodId != null) 'mood_id': moodId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -393,7 +426,8 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       Value<int?>? notebookId,
       Value<int?>? moodId,
       Value<DateTime>? createdAt,
-      Value<DateTime>? updatedAt}) {
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt}) {
     return DiariesCompanion(
       id: id ?? this.id,
       dateDay: dateDay ?? this.dateDay,
@@ -404,6 +438,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       moodId: moodId ?? this.moodId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -437,6 +472,9 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -451,7 +489,8 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
           ..write('notebookId: $notebookId, ')
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -4519,6 +4558,11 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, TodoRow> {
   late final GeneratedColumn<int> remindBefore = GeneratedColumn<int>(
       'remind_before', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _repeatMeta = const VerificationMeta('repeat');
+  @override
+  late final GeneratedColumn<String> repeat = GeneratedColumn<String>(
+      'repeat', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _sortOrderMeta =
       const VerificationMeta('sortOrder');
   @override
@@ -4540,8 +4584,17 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, TodoRow> {
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, title, done, dueDay, remindBefore, sortOrder, createdAt, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        title,
+        done,
+        dueDay,
+        remindBefore,
+        repeat,
+        sortOrder,
+        createdAt,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4574,6 +4627,10 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, TodoRow> {
           _remindBeforeMeta,
           remindBefore.isAcceptableOrUnknown(
               data['remind_before']!, _remindBeforeMeta));
+    }
+    if (data.containsKey('repeat')) {
+      context.handle(_repeatMeta,
+          repeat.isAcceptableOrUnknown(data['repeat']!, _repeatMeta));
     }
     if (data.containsKey('sort_order')) {
       context.handle(_sortOrderMeta,
@@ -4610,6 +4667,8 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, TodoRow> {
           .read(DriftSqlType.int, data['${effectivePrefix}due_day']),
       remindBefore: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}remind_before']),
+      repeat: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}repeat']),
       sortOrder: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
       createdAt: attachedDatabase.typeMapping
@@ -4631,6 +4690,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
   final bool done;
   final int? dueDay;
   final int? remindBefore;
+  final String? repeat;
   final int sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -4640,6 +4700,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
       required this.done,
       this.dueDay,
       this.remindBefore,
+      this.repeat,
       required this.sortOrder,
       required this.createdAt,
       required this.updatedAt});
@@ -4654,6 +4715,9 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
     }
     if (!nullToAbsent || remindBefore != null) {
       map['remind_before'] = Variable<int>(remindBefore);
+    }
+    if (!nullToAbsent || repeat != null) {
+      map['repeat'] = Variable<String>(repeat);
     }
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -4671,6 +4735,8 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
       remindBefore: remindBefore == null && nullToAbsent
           ? const Value.absent()
           : Value(remindBefore),
+      repeat:
+          repeat == null && nullToAbsent ? const Value.absent() : Value(repeat),
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -4686,6 +4752,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
       done: serializer.fromJson<bool>(json['done']),
       dueDay: serializer.fromJson<int?>(json['dueDay']),
       remindBefore: serializer.fromJson<int?>(json['remindBefore']),
+      repeat: serializer.fromJson<String?>(json['repeat']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -4700,6 +4767,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
       'done': serializer.toJson<bool>(done),
       'dueDay': serializer.toJson<int?>(dueDay),
       'remindBefore': serializer.toJson<int?>(remindBefore),
+      'repeat': serializer.toJson<String?>(repeat),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -4712,6 +4780,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
           bool? done,
           Value<int?> dueDay = const Value.absent(),
           Value<int?> remindBefore = const Value.absent(),
+          Value<String?> repeat = const Value.absent(),
           int? sortOrder,
           DateTime? createdAt,
           DateTime? updatedAt}) =>
@@ -4722,6 +4791,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
         dueDay: dueDay.present ? dueDay.value : this.dueDay,
         remindBefore:
             remindBefore.present ? remindBefore.value : this.remindBefore,
+        repeat: repeat.present ? repeat.value : this.repeat,
         sortOrder: sortOrder ?? this.sortOrder,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -4735,6 +4805,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
       remindBefore: data.remindBefore.present
           ? data.remindBefore.value
           : this.remindBefore,
+      repeat: data.repeat.present ? data.repeat.value : this.repeat,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -4749,6 +4820,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
           ..write('done: $done, ')
           ..write('dueDay: $dueDay, ')
           ..write('remindBefore: $remindBefore, ')
+          ..write('repeat: $repeat, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -4757,8 +4829,8 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, title, done, dueDay, remindBefore, sortOrder, createdAt, updatedAt);
+  int get hashCode => Object.hash(id, title, done, dueDay, remindBefore, repeat,
+      sortOrder, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4768,6 +4840,7 @@ class TodoRow extends DataClass implements Insertable<TodoRow> {
           other.done == this.done &&
           other.dueDay == this.dueDay &&
           other.remindBefore == this.remindBefore &&
+          other.repeat == this.repeat &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -4779,6 +4852,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
   final Value<bool> done;
   final Value<int?> dueDay;
   final Value<int?> remindBefore;
+  final Value<String?> repeat;
   final Value<int> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -4788,6 +4862,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
     this.done = const Value.absent(),
     this.dueDay = const Value.absent(),
     this.remindBefore = const Value.absent(),
+    this.repeat = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4798,6 +4873,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
     this.done = const Value.absent(),
     this.dueDay = const Value.absent(),
     this.remindBefore = const Value.absent(),
+    this.repeat = const Value.absent(),
     this.sortOrder = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -4810,6 +4886,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
     Expression<bool>? done,
     Expression<int>? dueDay,
     Expression<int>? remindBefore,
+    Expression<String>? repeat,
     Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -4820,6 +4897,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
       if (done != null) 'done': done,
       if (dueDay != null) 'due_day': dueDay,
       if (remindBefore != null) 'remind_before': remindBefore,
+      if (repeat != null) 'repeat': repeat,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -4832,6 +4910,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
       Value<bool>? done,
       Value<int?>? dueDay,
       Value<int?>? remindBefore,
+      Value<String?>? repeat,
       Value<int>? sortOrder,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
@@ -4841,6 +4920,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
       done: done ?? this.done,
       dueDay: dueDay ?? this.dueDay,
       remindBefore: remindBefore ?? this.remindBefore,
+      repeat: repeat ?? this.repeat,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -4865,6 +4945,9 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
     if (remindBefore.present) {
       map['remind_before'] = Variable<int>(remindBefore.value);
     }
+    if (repeat.present) {
+      map['repeat'] = Variable<String>(repeat.value);
+    }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
@@ -4885,6 +4968,7 @@ class TodosCompanion extends UpdateCompanion<TodoRow> {
           ..write('done: $done, ')
           ..write('dueDay: $dueDay, ')
           ..write('remindBefore: $remindBefore, ')
+          ..write('repeat: $repeat, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -4940,6 +5024,7 @@ typedef $$DiariesTableCreateCompanionBuilder = DiariesCompanion Function({
   Value<int?> moodId,
   required DateTime createdAt,
   required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
 });
 typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<int> id,
@@ -4951,6 +5036,7 @@ typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<int?> moodId,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
 });
 
 class $$DiariesTableFilterComposer
@@ -4988,6 +5074,9 @@ class $$DiariesTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 }
 
 class $$DiariesTableOrderingComposer
@@ -5025,6 +5114,9 @@ class $$DiariesTableOrderingComposer
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
 }
 
 class $$DiariesTableAnnotationComposer
@@ -5062,6 +5154,9 @@ class $$DiariesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 }
 
 class $$DiariesTableTableManager extends RootTableManager<
@@ -5096,6 +5191,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<int?> moodId = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
           }) =>
               DiariesCompanion(
             id: id,
@@ -5107,6 +5203,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deletedAt: deletedAt,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5118,6 +5215,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<int?> moodId = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
           }) =>
               DiariesCompanion.insert(
             id: id,
@@ -5129,6 +5227,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             moodId: moodId,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deletedAt: deletedAt,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (
@@ -7217,6 +7316,7 @@ typedef $$TodosTableCreateCompanionBuilder = TodosCompanion Function({
   Value<bool> done,
   Value<int?> dueDay,
   Value<int?> remindBefore,
+  Value<String?> repeat,
   Value<int> sortOrder,
   required DateTime createdAt,
   required DateTime updatedAt,
@@ -7227,6 +7327,7 @@ typedef $$TodosTableUpdateCompanionBuilder = TodosCompanion Function({
   Value<bool> done,
   Value<int?> dueDay,
   Value<int?> remindBefore,
+  Value<String?> repeat,
   Value<int> sortOrder,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -7254,6 +7355,9 @@ class $$TodosTableFilterComposer extends Composer<_$AppDatabase, $TodosTable> {
 
   ColumnFilters<int> get remindBefore => $composableBuilder(
       column: $table.remindBefore, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get repeat => $composableBuilder(
+      column: $table.repeat, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnFilters(column));
@@ -7290,6 +7394,9 @@ class $$TodosTableOrderingComposer
       column: $table.remindBefore,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get repeat => $composableBuilder(
+      column: $table.repeat, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
 
@@ -7323,6 +7430,9 @@ class $$TodosTableAnnotationComposer
 
   GeneratedColumn<int> get remindBefore => $composableBuilder(
       column: $table.remindBefore, builder: (column) => column);
+
+  GeneratedColumn<String> get repeat =>
+      $composableBuilder(column: $table.repeat, builder: (column) => column);
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
@@ -7362,6 +7472,7 @@ class $$TodosTableTableManager extends RootTableManager<
             Value<bool> done = const Value.absent(),
             Value<int?> dueDay = const Value.absent(),
             Value<int?> remindBefore = const Value.absent(),
+            Value<String?> repeat = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -7372,6 +7483,7 @@ class $$TodosTableTableManager extends RootTableManager<
             done: done,
             dueDay: dueDay,
             remindBefore: remindBefore,
+            repeat: repeat,
             sortOrder: sortOrder,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -7382,6 +7494,7 @@ class $$TodosTableTableManager extends RootTableManager<
             Value<bool> done = const Value.absent(),
             Value<int?> dueDay = const Value.absent(),
             Value<int?> remindBefore = const Value.absent(),
+            Value<String?> repeat = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
@@ -7392,6 +7505,7 @@ class $$TodosTableTableManager extends RootTableManager<
             done: done,
             dueDay: dueDay,
             remindBefore: remindBefore,
+            repeat: repeat,
             sortOrder: sortOrder,
             createdAt: createdAt,
             updatedAt: updatedAt,

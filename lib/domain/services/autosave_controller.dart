@@ -67,6 +67,8 @@ class AutosaveController {
   String _baselineTitle = '';
   String _baselineContent = '';
   int? _baselineMoodOrExtra;
+  int? _dateDay; // 日记补记日期（yyyyMMdd，note 恒 null）
+  int? _baselineDateDay;
   bool _loaded = false;
 
   bool get isLoaded => _loaded;
@@ -77,18 +79,27 @@ class AutosaveController {
     required String title,
     required String content,
     int? extra,
+    int? dateDay,
   }) {
     _entityId = entityId;
     _baselineTitle = title;
     _baselineContent = content;
     _baselineMoodOrExtra = extra;
+    _dateDay = dateDay;
+    _baselineDateDay = dateDay;
     _loaded = true;
+  }
+
+  /// 补记/改期：编辑器日期行选中后调用（随后 saveNow / flush 落库）
+  void setDateDay(int? d) {
+    if (!_disposed) _dateDay = d;
   }
 
   bool _isModified(String title, String content, int? extra) =>
       title != _baselineTitle ||
       content != _baselineContent ||
-      extra != _baselineMoodOrExtra;
+      extra != _baselineMoodOrExtra ||
+      _dateDay != _baselineDateDay;
 
   /// 用户输入变化（编辑器 onChanged）
   void onChanged({
@@ -135,11 +146,19 @@ class AutosaveController {
 
     await _lock.synchronized(() async {
       if (_disposed) return;
+      final dateDay = _dateDay;
       // 无变化不写库（NotallyX 整实体脏检查）
       if (!_isModified(title, content, extra)) {
         if (_status == SaveStatus.dirty || _status == SaveStatus.saving) {
           _set(SaveStatus.saved, at: _lastSavedAt ?? DateTime.now());
         }
+        return;
+      }
+      // 只选了补记日期、还没写任何内容：不产生空记录（日期留待有内容时一起落库）
+      if (_entityId == null &&
+          title.isEmpty &&
+          content.isEmpty &&
+          extra == null) {
         return;
       }
       // 最小长度护栏：防止"编辑器还没加载完把已有内容覆盖成空"
@@ -152,6 +171,7 @@ class AutosaveController {
           title: title,
           content: content,
           extra: extra,
+          dateDay: dateDay,
         );
         if (_entityId == null) {
           _entityId = id;
@@ -163,6 +183,7 @@ class AutosaveController {
         _baselineTitle = title;
         _baselineContent = content;
         _baselineMoodOrExtra = extra;
+        _baselineDateDay = dateDay;
         _set(SaveStatus.saved, at: DateTime.now());
         await _repo.clearDraft(ownerType: draftOwnerType, ownerId: _entityId!);
       } catch (e) {

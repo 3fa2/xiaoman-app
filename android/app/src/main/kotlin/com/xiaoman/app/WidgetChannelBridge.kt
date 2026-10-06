@@ -35,4 +35,23 @@ object WidgetChannelBridge {
             // 解析失败不影响主流程
         }
     }
+
+    /** v5.3：今日日程小组件推送（[{time,title,done},...] + 剩余数 + 日期） */
+    fun pushSchedule(context: Context, json: String, remaining: Int, dateDay: Int) {
+        try {
+            val arr = org.json.JSONArray(json)
+            val list = (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                ScheduleWidgetStore.Block(
+                    time = o.optString("time", ""),
+                    title = o.optString("title", ""),
+                    done = o.optBoolean("done", false),
+                )
+            }
+            ScheduleWidgetStore.setSchedule(context, list, remaining, dateDay)
+            TodoWidgetData.refreshScheduleWidgets(context)
+        } catch (e: Exception) {
+            // 解析失败不影响主流程
+        }
+    }
 }

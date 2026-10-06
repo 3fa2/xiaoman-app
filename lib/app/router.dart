@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/diary/diary_calendar_screen.dart';
 import '../features/diary/diary_detail_screen.dart';
 import '../features/diary/diary_editor_screen.dart';
+import '../features/diary/diary_recycle_bin_screen.dart';
 import '../features/diary/diary_search_screen.dart';
 import '../features/diary/mood_trend_screen.dart';
 import '../features/home/home_screen.dart';
@@ -77,6 +78,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                       notebookId: int.tryParse(
                         s.uri.queryParameters['notebookId'] ?? '',
                       ),
+                      // 补记日期（yyyyMMdd）：日历选哪天就补哪天；仅允许过去/今天
+                      initialDateDay: int.tryParse(
+                        s.uri.queryParameters['dateDay'] ?? '',
+                      ),
                     ),
                   ),
                   GoRoute(
@@ -93,7 +98,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'search',
-                    builder: (c, s) => const DiarySearchScreen(),
+                    builder: (c, s) => DiarySearchScreen(
+                      initialQuery: s.uri.queryParameters['q'],
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'trash',
+                    builder: (c, s) => const DiaryRecycleBinScreen(),
                   ),
                   GoRoute(
                     path: 'trend',
@@ -180,20 +191,22 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 /// 供页面跳转用的小助手（统一命名，避免裸字符串散落）
 extension AppNav on BuildContext {
-  void openDiaryEditor([int? id, int? notebookId]) {
+  void openDiaryEditor([int? id, int? notebookId, int? dateDay]) {
     if (id != null) {
       push('/diary/edit/$id');
       return;
     }
-    // 从某本进入新建时带上默认归属（-1 = 未归本视图，视为不传）
-    if (notebookId != null && notebookId > 0) {
-      push('/diary/edit?notebookId=$notebookId');
-      return;
-    }
-    push('/diary/edit');
+    // 从某本进入新建时带上默认归属（-1 = 未归本视图，视为不传）；
+    // dateDay 非空 = 补记该日（日历选中日 / 首页心情选日期）
+    final q = <String>[
+      if (notebookId != null && notebookId > 0) 'notebookId=$notebookId',
+      if (dateDay != null) 'dateDay=$dateDay',
+    ].join('&');
+    push(q.isEmpty ? '/diary/edit' : '/diary/edit?$q');
   }
   void openDiaryDetail(int id) => push('/diary/detail/$id');
   void openDiarySearch() => push('/diary/search');
+  void openDiaryTrash() => push('/diary/trash');
   void openMoodTrend() => push('/diary/trend');
   void openNoteList(int notebookId) => push('/notes/list/$notebookId');
   void openNoteSearch() => push('/notes/search');

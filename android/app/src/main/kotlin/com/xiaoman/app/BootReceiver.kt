@@ -25,13 +25,20 @@ class BootReceiver : BroadcastReceiver() {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val now = System.currentTimeMillis()
         for (e in AlarmPersistence.getAll(context)) {
-            if (e.epochMs <= now) continue
+            var epoch = e.epochMs
+            // v5.3：每日提醒持久时间可能已过（隔了几天没开机）→ 滚到未来
+            if (e.repeatDaily && epoch <= now) {
+                while (epoch <= now) epoch += 24 * 60 * 60 * 1000L
+            }
+            if (epoch <= now) continue
             val i = Intent(context, AlarmReceiver::class.java).apply {
                 putExtra(AlarmReceiver.EXTRA_ID, e.id)
                 putExtra(AlarmReceiver.EXTRA_TITLE, e.title)
                 putExtra(AlarmReceiver.EXTRA_BODY, e.body)
                 putExtra(AlarmReceiver.EXTRA_PAYLOAD, e.payload)
                 putExtra(AlarmReceiver.EXTRA_CHANNEL, e.channel)
+                putExtra(AlarmReceiver.EXTRA_EPOCH, epoch)
+                putExtra(AlarmReceiver.EXTRA_REPEAT_DAILY, e.repeatDaily)
             }
             val pi = PendingIntent.getBroadcast(
                 context, e.id, i,
@@ -39,13 +46,15 @@ class BootReceiver : BroadcastReceiver() {
             )
             val exactOk = if (Build.VERSION.SDK_INT >= 31) am.canScheduleExactAlarms() else true
             if (exactOk) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, e.epochMs, pi)
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, epoch, pi)
             } else {
                 // 权限不可用：降级非精确，宁可延迟不可丢失
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, e.epochMs, pi)
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, epoch, pi)
             }
         }
         // v5.0：顺手刷新待办小组件（开机后数字/列表才不会停留在旧状态）
         TodoWidgetData.refreshAll(context)
+        // v5.3：今日日程小组件同理
+        TodoWidgetData.refreshScheduleWidgets(context)
     }
 }

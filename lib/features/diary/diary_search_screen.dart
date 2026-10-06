@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -8,18 +11,60 @@ import '../../di/providers.dart';
 import '../../domain/models/diary.dart';
 import '../shared/widgets.dart';
 
-/// 日记全部/搜索：FTS5 全文检索 + 按心情筛选。
+/// 日记全部/搜索：FTS5 全文检索 + 按心情筛选 + 搜索历史 + 关键词高亮。
 class DiarySearchScreen extends ConsumerStatefulWidget {
-  const DiarySearchScreen({super.key});
+  const DiarySearchScreen({super.key, this.initialQuery});
+
+  /// 从详情页标签点进来时预填（router 传 q=）
+  final String? initialQuery;
 
   @override
   ConsumerState<DiarySearchScreen> createState() => _DiarySearchScreenState();
 }
 
 class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
+  late final TextEditingController _ctrl;
   String _query = '';
   int? _moodFilter;
   String? _tagFilter;
+  List<String> _history = const [];
+
+  static const _historyKey = 'diary_search_history';
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialQuery ?? '');
+    _query = widget.initialQuery ?? '';
+    _loadHistory();
+  }
+
+  @override
+  void dispose() {
+    // 退出时记最后一次查询（按击键记录会存下一串输入前缀）
+    final q = _query.trim();
+    if (q.isNotEmpty) {
+      final next = [q, ..._history.where((h) => h != q)].take(8).toList();
+      unawaited(
+        ref.read(settingsRepoProvider).set(_historyKey, jsonEncode(next)),
+      );
+    }
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadHistory() async {
+    final raw = await ref.read(settingsRepoProvider).get(_historyKey);
+    if (!mounted) return;
+    setState(() {
+      _history = (jsonDecode(raw ?? '[]') as List).cast<String>();
+    });
+  }
+
+  Future<void> _removeHistory(String h) async {
+    setState(() => _history = _history.where((x) => x != h).toList());
+    await ref.read(settingsRepoProvider).set(_historyKey, jsonEncode(_history));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +75,8 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: TextField(
-          autofocus: true,
+          controller: _ctrl,
+          autofocus: widget.initialQuery == null,
           decoration: const InputDecoration(
             hintText: '搜正文、标题（3 字以上全文检索）',
             border: InputBorder.none,
@@ -87,6 +133,30 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
               },
             ),
           ),
+          if (_query.isEmpty && _history.isNotEmpty)
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.page,
+                ),
+                children: [
+                  for (final h in _history)
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppSpacing.s8),
+                      child: InputChip(
+                        label: Text(h),
+                        onDeleted: () => _removeHistory(h),
+                        onPressed: () {
+                          _ctrl.text = h;
+                          setState(() => _query = h);
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: _query.isEmpty
                 ? _AllDiaries(
@@ -95,6 +165,7 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
                     onTagFilter: setTag,
                   )
                 : _SearchResults(
+                    key: ValueKey(_query),
                     query: _query,
                     moodFilter: _moodFilter,
                     tagFilter: _tagFilter,
@@ -107,9 +178,10 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
 }
 
 class _DiaryTile extends StatelessWidget {
-  const _DiaryTile({required this.diary});
+  const _DiaryTile({required this.diary, this.query = ''});
 
   final Diary diary;
+  final String query;
 
   @override
   Widget build(BuildContext context) {
@@ -123,16 +195,18 @@ class _DiaryTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                diary.title.isEmpty ? diary.summary : diary.title,
+              HighlightText(
+                text: diary.title.isEmpty ? diary.summary : diary.title,
+                query: query,
                 style: AppType.headline.copyWith(color: p.onSurface),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               if (diary.summary.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.s4),
-                Text(
-                  diary.summary,
+                HighlightText(
+                  text: diary.summary,
+                  query: query,
                   style: AppType.body.copyWith(color: p.onSurfaceVariant),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -234,6 +308,7 @@ class _AllDiaries extends ConsumerWidget {
 
 class _SearchResults extends ConsumerStatefulWidget {
   const _SearchResults({
+    super.key,
     required this.query,
     required this.moodFilter,
     this.tagFilter,
@@ -300,7 +375,7 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
       itemCount: list.length,
       itemBuilder: (context, i) => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-        child: _DiaryTile(diary: list[i]),
+        child: _DiaryTile(diary: list[i], query: widget.query),
       ),
     );
   }

@@ -9,6 +9,7 @@ import 'package:trinity/data/repositories/media_repository.dart';
 import 'package:trinity/data/repositories/note_repository.dart';
 import 'package:trinity/data/repositories/schedule_repository.dart';
 import 'package:trinity/data/repositories/settings_repository.dart';
+import 'package:trinity/data/repositories/todo_repository.dart';
 import 'package:trinity/domain/models/media.dart';
 import 'package:trinity/domain/models/schedule.dart';
 
@@ -342,6 +343,136 @@ void main() {
       expect(detached, isNotEmpty); // 分离实例没被删
       expect(detached.first.startMinutes, 600); // 时间还是用户改的
       expect(detached.first.detached, isTrue);
+    });
+
+    test('补记：save 指定 dateDay + 移动已有日记日期', () async {
+      final repo = DiaryRepositoryImpl(db);
+      // 补记：创建时指定过去日期
+      final id = await repo.save(
+        id: null, title: '补记', content: 'x', extra: null, dateDay: 20260101,
+      );
+      expect((await repo.watchByDate(20260101).first).length, 1);
+      // 改期：更新带 dateDay → 移动到新日期，原日期清空
+      await repo.save(
+        id: id, title: '补记', content: 'x', extra: null, dateDay: 20260102,
+      );
+      expect((await repo.watchByDate(20260101).first), isEmpty);
+      final moved = await repo.getById(id);
+      expect(moved!.dateDay, 20260102);
+      // 缺省 dateDay 的自动保存不改日期
+      await repo.save(id: id, title: '补记2', content: 'y', extra: null);
+      expect((await repo.getById(id))!.dateDay, 20260102);
+    });
+  });
+
+  group('RecycleBin（v5.3 软删除）', () {
+    test('软删除 → 回收站 → 恢复 / 彻底删除；列表与搜索不再出现', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(
+        id: null, title: '待删', content: '独特内容xyz', extra: null,
+      );
+      expect((await repo.watchAll().first).length, 1);
+      await repo.delete(id); // 软删除
+      expect((await repo.watchAll().first), isEmpty);
+      expect((await repo.getById(id))!.deletedAt, isNotNull);
+      expect((await repo.watchDeleted().first).length, 1);
+      // 搜索不再出现
+      expect(await repo.search('独特内容xyz'), isEmpty);
+      // 恢复
+      await repo.restoreDiary(id);
+      expect((await repo.watchAll().first).length, 1);
+      expect((await repo.getById(id))!.deletedAt, isNull);
+      // 彻底删除
+      await repo.delete(id);
+      await repo.purgeDiary(id);
+      expect(await repo.getById(id), isNull);
+    });
+
+    test('deletedBefore：只返回超过截止时间的已删条目', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(
+        id: null, title: 'x', content: 'y', extra: null,
+      );
+      await repo.delete(id);
+      // 刚删 1 分钟 → 以 30 天前为界的过期查询查不到
+      expect(
+        await repo.deletedBefore(
+          DateTime.now().subtract(const Duration(days: 30)),
+        ),
+        isEmpty,
+      );
+      // cutoff 在未来 → 查得到
+      expect(
+        await repo.deletedBefore(DateTime.now().add(const Duration(days: 1))),
+        [id],
+      );
+    });
+  });
+
+  group('TodoRepeat（v5.3 循环待办）', () {
+    test('每天循环：勾掉 → 滚到明天且不留在已完成', () async {
+      final repo = TodoRepositoryImpl(db);
+      final today = DateDay.of(DateTime.now());
+      final id = await repo.add(title: '吃药', dueDay: today, repeat: 'daily');
+      await repo.toggle(id: id, done: true);
+      final t = (await repo.watchAll().first).first;
+      expect(t.done, isFalse);
+      expect(t.dueDay, DateDay.addDays(today, 1));
+    });
+
+    test('每月循环：1月31日 → 2月28日（月末钳制）', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '交房租', dueDay: 20260131, repeat: 'monthly');
+      await repo.toggle(id: id, done: true);
+      final t = (await repo.watchAll().first).first;
+      expect(t.done, isFalse);
+      expect(t.dueDay, 20260228);
+    });
+
+    test('每周循环：+7 天；无截止日的循环待办勾掉按普通完成处理', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '周报', dueDay: 20260105, repeat: 'weekly');
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).first.dueDay, 20260112);
+      // 无截止日：repeat 不生效，正常完成
+      final id2 = await repo.add(title: '无期限的', repeat: 'daily');
+      await repo.toggle(id: id2, done: true);
+      expect((await repo.watchAll().first).where((t) => t.id == id2).first.done,
+          isTrue);
+    });
+
+    test('非循环待办：勾掉保持完成态', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '一次性', dueDay: 20260101);
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).first.done, isTrue);
+    });
+  });
+
+  group('Markdown（v5.3 导出）', () {
+    test('buildMarkdownString：含标题/月份节/心情/标签，排除回收站', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      final moods = await diaryRepo.watchMoods().first;
+      await diaryRepo.save(
+        id: null, title: '有心情的', content: '正文内容',
+        extra: moods.first.id, dateDay: 20260915,
+      );
+      final d2 = await diaryRepo.save(
+        id: null, title: '带标签的', content: 'x', extra: null, dateDay: 20260920,
+      );
+      await diaryRepo.setTags(diaryId: d2, tags: ['工作']);
+      final d3 = await diaryRepo.save(
+        id: null, title: '被删的', content: 'y', extra: null, dateDay: 20260925,
+      );
+      await diaryRepo.delete(d3);
+
+      final md = await BackupServiceImpl(db).buildMarkdownString();
+      expect(md, contains('# 小满 · 日记导出'));
+      expect(md, contains('## 2026 年 9 月'));
+      expect(md, contains('有心情的'));
+      expect(md, contains('心情：'));
+      expect(md, contains('标签：工作'));
+      expect(md, isNot(contains('被删的')));
     });
   });
 

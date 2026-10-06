@@ -8,6 +8,7 @@ class Todo {
   final bool done;
   final int? dueDay; // yyyymmdd 截止日（null=无期限）
   final int? remindBefore; // 提前提醒分钟数（null=到点即提醒）
+  final String? repeat; // 循环：daily/weekly/monthly（null=不重复）
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -17,17 +18,25 @@ class Todo {
     required this.done,
     this.dueDay,
     this.remindBefore,
+    this.repeat,
     required this.createdAt,
     required this.updatedAt,
   });
 
-  Todo copyWith({bool? done, String? title, int? dueDay, int? remindBefore}) =>
+  Todo copyWith({
+    bool? done,
+    String? title,
+    int? dueDay,
+    int? remindBefore,
+    String? repeat,
+  }) =>
       Todo(
         id: id,
         title: title ?? this.title,
         done: done ?? this.done,
         dueDay: dueDay ?? this.dueDay,
         remindBefore: remindBefore ?? this.remindBefore,
+        repeat: repeat ?? this.repeat,
         createdAt: createdAt,
         updatedAt: updatedAt,
       );

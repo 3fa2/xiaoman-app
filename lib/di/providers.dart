@@ -10,6 +10,7 @@ import '../data/repositories/note_repository.dart';
 import '../data/repositories/schedule_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/todo_repository.dart';
+import '../data/services/auto_backup_service.dart';
 import '../data/services/backup_service.dart';
 import '../data/services/notification_service.dart';
 import '../domain/models/todo.dart';
@@ -49,6 +50,13 @@ final todoRepoProvider = Provider<TodoRepository>(
 
 final backupProvider = Provider<BackupServiceImpl>(
   (ref) => BackupServiceImpl(ref.watch(dbProvider)),
+);
+
+final autoBackupProvider = Provider<AutoBackupService>(
+  (ref) => AutoBackupService(
+    ref.watch(dbProvider),
+    ref.watch(settingsRepoProvider),
+  ),
 );
 
 final notificationServiceProvider = Provider<NotificationService>(
@@ -92,11 +100,22 @@ class ReminderWarningsNotifier extends Notifier<List<String>> {
 
   void set(List<String> warnings) => state = warnings;
 
-  /// v5.0：待办数据一并传入 syncAll（待办提醒与日程提醒同一次全量重建）
+  /// v5.0：待办数据一并传入 syncAll（待办提醒与日程提醒同一次全量重建）；
+  /// v5.3：读设置传写日记提醒（开关 + 时间）
   Future<void> syncNow() async {
     final todos = await _currentTodos();
-    final warnings = await NotificationService.instance
-        .syncAll(ref.read(scheduleRepoProvider), todos: todos);
+    final settings = ref.read(settingsRepoProvider);
+    final diaryRemind = (await settings.get('diary_remind_enabled')) == '1';
+    final timeStr = await settings.get('diary_remind_time') ?? '22:00';
+    final parts = timeStr.split(':');
+    final minutes = (int.tryParse(parts[0]) ?? 22) * 60 +
+        (int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0);
+    final warnings = await NotificationService.instance.syncAll(
+      ref.read(scheduleRepoProvider),
+      todos: todos,
+      diaryRemind: diaryRemind,
+      diaryRemindMinutes: minutes,
+    );
     set(warnings);
   }
 

@@ -444,6 +444,66 @@ class MoodDot extends StatelessWidget {
   }
 }
 
+/// 搜索结果文本：命中关键词加粗主色高亮（query 为空 = 普通文本）
+class HighlightText extends StatelessWidget {
+  const HighlightText({
+    super.key,
+    required this.text,
+    required this.query,
+    this.style,
+    this.maxLines,
+    this.overflow,
+  });
+
+  final String text;
+  final String query;
+  final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty || !text.toLowerCase().contains(q)) {
+      return Text(
+        text,
+        style: style,
+        maxLines: maxLines,
+        overflow: overflow,
+      );
+    }
+    final base = style ?? const TextStyle();
+    final hitStyle = base.copyWith(
+      color: p.primary,
+      fontWeight: FontWeight.w700,
+    );
+    final spans = <TextSpan>[];
+    var start = 0;
+    final lower = text.toLowerCase();
+    while (true) {
+      final idx = lower.indexOf(q, start);
+      if (idx < 0) {
+        spans.add(TextSpan(text: text.substring(start)));
+        break;
+      }
+      if (idx > start) {
+        spans.add(TextSpan(text: text.substring(start, idx)));
+      }
+      spans.add(TextSpan(
+        text: text.substring(idx, idx + q.length),
+        style: hitStyle,
+      ));
+      start = idx + q.length;
+    }
+    return Text.rich(
+      TextSpan(children: spans),
+      maxLines: maxLines,
+      overflow: overflow,
+    );
+  }
+}
+
 /// ============================================================
 /// 全屏媒体预览（v4.4）
 /// 从 Dialog 改为标准 PageRoute：Dialog 承受不了系统预测式返回手势

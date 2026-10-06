@@ -11,7 +11,8 @@ class FakeEditorRepo implements EditorRepository {
   FakeEditorRepo({this.failSaves = false});
 
   final bool failSaves;
-  final savedPayloads = <({int? id, String title, String content, int? extra})>[];
+  final savedPayloads =
+      <({int? id, String title, String content, int? extra, int? dateDay})>[];
   final drafts = <int, String>{};
   var nextId = 100;
 
@@ -21,10 +22,17 @@ class FakeEditorRepo implements EditorRepository {
     required String title,
     required String content,
     required int? extra,
+    int? dateDay,
   }) async {
     if (failSaves) throw StateError('db locked');
     final newId = id ?? nextId++;
-    savedPayloads.add((id: newId, title: title, content: content, extra: extra));
+    savedPayloads.add((
+      id: newId,
+      title: title,
+      content: content,
+      extra: extra,
+      dateDay: dateDay,
+    ));
     return newId;
   }
 
@@ -192,5 +200,42 @@ void main() {
     c.onChanged(title: 'after', content: 'dispose', extra: null);
     await c.flush(title: 'after', content: 'dispose', extra: null);
     expect(repo.savedPayloads, isEmpty);
+  });
+
+  test('补记：新建选了日期 → 首存落到指定日期；只选日期不写内容不落库', () async {
+    final repo = FakeEditorRepo();
+    final c = AutosaveController(
+      repo: repo,
+      draftOwnerType: MediaOwner.diary,
+    );
+    c.loadBaseline(
+      entityId: null, title: '', content: '', extra: null, dateDay: 20260101,
+    );
+    // 只把日期改成过去某天、不写任何内容就退出 → 不产生空记录
+    c.setDateDay(20251231);
+    await c.flush(title: '', content: '', extra: null);
+    expect(repo.savedPayloads, isEmpty);
+    // 写了内容 → 首存落到补记日期
+    await c.flush(title: '补记', content: '那天的事', extra: null);
+    expect(repo.savedPayloads.last.dateDay, 20251231);
+    expect(c.status, SaveStatus.saved);
+    c.dispose();
+  });
+
+  test('改期：已有实体 setDateDay → flush 移动日期', () async {
+    final repo = FakeEditorRepo();
+    final c = AutosaveController(
+      repo: repo,
+      draftOwnerType: MediaOwner.diary,
+    );
+    c.loadBaseline(
+      entityId: 7, title: 'T', content: 'C', extra: null, dateDay: 20260101,
+    );
+    c.setDateDay(20260102);
+    await c.flush(title: 'T', content: 'C', extra: null);
+    expect(repo.savedPayloads.last.id, 7);
+    expect(repo.savedPayloads.last.dateDay, 20260102);
+    expect(c.status, SaveStatus.saved);
+    c.dispose();
   });
 }

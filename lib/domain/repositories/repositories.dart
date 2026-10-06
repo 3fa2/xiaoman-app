@@ -14,6 +14,7 @@ abstract interface class EditorRepository {
     required String title,
     required String content,
     required int? extra, // diary: moodId / note: notebookId 变更另走专用方法
+    int? dateDay, // diary 专用：创建时指定日期（补记），更新时非空则移动日期；note 忽略
   });
 
   Future<void> saveDraft({
@@ -48,7 +49,11 @@ abstract interface class DiaryRepository implements EditorRepository {
   Future<void> setMood({required int diaryId, required int? moodId});
   Future<void> setTags({required int diaryId, required List<String> tags});
   Future<void> setNotebook({required int diaryId, required int? notebookId});
-  Future<void> delete(int id);
+  Future<void> delete(int id); // 软删除 → 回收站（30 天后启动时自动清理）
+  Future<void> restoreDiary(int id); // 从回收站恢复
+  Future<void> purgeDiary(int id); // 彻底删除（回收站用，媒体文件由调用方清理）
+  Stream<List<Diary>> watchDeleted(); // 回收站列表
+  Future<List<int>> deletedBefore(DateTime cutoff); // 过期待清理的 id
   Future<List<Diary>> search(String query); // FTS5，<3 字回退 LIKE
   Stream<List<Mood>> watchMoods();
   Future<int> addMood(String name, double hue);
@@ -93,12 +98,18 @@ abstract interface class NoteRepository implements EditorRepository {
 /// 独立待办（v5.0：待办 tab + 桌面小组件数据源）
 abstract interface class TodoRepository {
   Stream<List<Todo>> watchAll(); // 未完成在前，按 sortOrder/createdAt
-  Future<int> add({required String title, int? dueDay, int? remindBefore});
+  Future<int> add({
+    required String title,
+    int? dueDay,
+    int? remindBefore,
+    String? repeat, // daily/weekly/monthly（null=不重复）
+  });
   Future<void> update({
     required int id,
     required String title,
     int? dueDay,
     int? remindBefore,
+    String? repeat,
   });
   Future<void> toggle({required int id, required bool done});
   Future<void> delete(int id);

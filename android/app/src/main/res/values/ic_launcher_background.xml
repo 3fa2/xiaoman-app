@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 「小满」图标背景色 —— 来自设计系统 canvas 冷近白 #EEF2F6 -->
+<!-- 「小满」图标背景色 —— 满版雾蓝 #3D6B8E（GitHub 式底色，白 mark 居中） -->
 <resources>
-    <color name="ic_launcher_background">#EEF2F6</color>
+    <color name="ic_launcher_background">#3D6B8E</color>
 </resources>

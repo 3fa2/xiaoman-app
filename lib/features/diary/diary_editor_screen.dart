@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -24,12 +25,20 @@ import '../shared/widgets.dart';
 /// ③ dispose 只做清理，不发起新写入
 /// ④ UI 只反映真实状态：saved/saving/dirty/error，绝不撒谎
 class DiaryEditorScreen extends ConsumerStatefulWidget {
-  const DiaryEditorScreen({super.key, required this.diaryId, this.notebookId});
+  const DiaryEditorScreen({
+    super.key,
+    required this.diaryId,
+    this.notebookId,
+    this.initialDateDay,
+  });
 
   final int? diaryId;
 
   /// 从某本日记本进入新建时默认归本（null = 不归本）
   final int? notebookId;
+
+  /// 新建时的补记日期（yyyyMMdd，null = 今天；仅限今天及以前，由路由层保证）
+  final int? initialDateDay;
 
   @override
   ConsumerState<DiaryEditorScreen> createState() => _DiaryEditorScreenState();
@@ -45,6 +54,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   bool _ready = false;
   int? _moodId;
   int? _notebookId; // 归属日记本
+  late int _dateDay; // 日记归属日期（yyyyMMdd）：新建可补记，已有可改期
   List<String> _tags = const []; // 实体未建时暂存，建后立即落库
   MediaOwner get _ownerType => MediaOwner.diary;
 
@@ -54,12 +64,21 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   /// 实体 id：编辑已有 → 固定；新建 → 首存后回填
   int? get _entityId => widget.diaryId ?? _savedId;
 
+  static int _todayInt() {
+    final n = DateTime.now();
+    return n.year * 10000 + n.month * 100 + n.day;
+  }
+
   /// 导入媒体前确保实体已存在（新建且还没首存时，先落一条占位记录）
   Future<int> _ensureEntityId() async {
     if (_entityId != null) return _entityId!;
     final repo = ref.read(diaryRepoProvider);
     final id = await repo.save(
-      id: null, title: _title.text, content: _content.text, extra: _moodId,
+      id: null,
+      title: _title.text,
+      content: _content.text,
+      extra: _moodId,
+      dateDay: _dateDay,
     );
     if (_tags.isNotEmpty) {
       await repo.setTags(diaryId: id, tags: _tags);
@@ -72,6 +91,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       title: _title.text,
       content: _content.text,
       extra: _moodId,
+      dateDay: _dateDay,
     );
     _savedId = id;
     return id;
@@ -118,18 +138,21 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       _moodId = diary.moodId;
       _tags = diary.tags;
       _notebookId = diary.notebookId;
+      _dateDay = diary.dateDay;
       _controller.loadBaseline(
         entityId: diary.id,
         title: diary.title,
         content: diary.content,
         extra: diary.moodId,
+        dateDay: diary.dateDay,
       );
     } else {
       _notebookId = widget.notebookId;
+      _dateDay = widget.initialDateDay ?? _todayInt();
       // 草稿兑底（MoeMemos 模式）：新建时有残留草稿则提示恢复
       final draft = await repo.findDraft(ownerType: _ownerType, ownerId: -1);
       _controller.loadBaseline(
-        entityId: null, title: '', content: '', extra: null,
+        entityId: null, title: '', content: '', extra: null, dateDay: _dateDay,
       );
       if (draft != null && mounted) {
         _promptRestoreDraft(draft);
@@ -213,9 +236,38 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
     _content.text = content ?? '';
     _moodId = extra;
     _controller.loadBaseline(
-      entityId: null, title: _title.text, content: _content.text, extra: null,
+      entityId: null,
+      title: _title.text,
+      content: _content.text,
+      extra: null,
+      dateDay: _dateDay,
     );
     setState(() {});
+  }
+
+  // ---- 补记/改期：选日期（仅限今天及以前）----
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(
+        _dateDay ~/ 10000, (_dateDay ~/ 100) % 100, _dateDay % 100,
+      ),
+      firstDate: DateTime(2000),
+      lastDate: today,
+    );
+    if (picked == null) return;
+    final d = picked.year * 10000 + picked.month * 100 + picked.day;
+    if (d == _dateDay) return;
+    setState(() => _dateDay = d);
+    _controller.setDateDay(d);
+    if (_entityId != null) {
+      // 已有实体：立即移动日期；新建实体：等首存（有内容才落库，不留空行）
+      _controller.saveNow(
+        title: _title.text, content: _content.text, extra: _moodId,
+      );
+    }
   }
 
   // ---- 归入日记本（实体已存在则立即落库；否则暂存，首存后补写）----
@@ -488,6 +540,44 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                           ),
                           onChanged: (v) => _controller.onChanged(
                             title: v, content: _content.text, extra: _moodId,
+                          ),
+                        ),
+                        // 日期行：新建可补记任意过去日期，已有可改期（≤ 今天）
+                        InkWell(
+                          borderRadius: BorderRadius.circular(AppRadii.rMd),
+                          onTap: _pickDate,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.s8,
+                            ),
+                            child: Row(
+                              children: [
+                                PhosphorIcon(
+                                  PhosphorIconsRegular.calendarBlank,
+                                  size: 20,
+                                  color: p.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: AppSpacing.s8),
+                                Text(
+                                  '记在 ${DateFormat('M月d日 EEEE', 'zh_CN').format(DateTime(
+                                    _dateDay ~/ 10000,
+                                    (_dateDay ~/ 100) % 100,
+                                    _dateDay % 100,
+                                  ))}',
+                                  style: AppType.label.copyWith(
+                                    color: _dateDay == _todayInt()
+                                        ? p.onSurfaceVariant
+                                        : p.primary,
+                                  ),
+                                ),
+                                const Spacer(),
+                                PhosphorIcon(
+                                  PhosphorIconsRegular.caretDown,
+                                  size: 16,
+                                  color: p.onSurfaceVariant,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         _NotebookRow(

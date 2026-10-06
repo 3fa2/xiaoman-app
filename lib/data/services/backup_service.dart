@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -13,7 +14,8 @@ class BackupServiceImpl {
 
   final AppDatabase _db;
 
-  Future<String> exportAllJson() async {
+  /// 全量结构化 JSON（不含媒体文件）。手动导出与自动备份共用。
+  Future<String> exportAllJsonString() async {
     await _db.checkpoint();
     final data = <String, dynamic>{};
 
@@ -51,19 +53,101 @@ class BackupServiceImpl {
     data['settings'] =
         (await _db.select(_db.settings).get()).map((r) => r.toJson()).toList();
 
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  Future<String> exportAllJson() async {
+    final content = await exportAllJsonString();
     final docs = await getApplicationDocumentsDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${docs.path}/trinity-backup-$stamp.json');
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(data),
-      flush: true,
-    );
+    await file.writeAsString(content, flush: true);
     return file.path;
+  }
+
+  /// 全部日记导出为单个 Markdown（按月分节，含心情/标签，排除回收站）
+  Future<String> exportMarkdown() async {
+    final content = await buildMarkdownString();
+    final docs = await getApplicationDocumentsDirectory();
+    final n = DateTime.now();
+    final stamp = '${n.year}'
+        '${n.month.toString().padLeft(2, '0')}'
+        '${n.day.toString().padLeft(2, '0')}';
+    final file = File('${docs.path}/xiaoman-diaries-$stamp.md');
+    await file.writeAsString(content, flush: true);
+    return file.path;
+  }
+
+  /// Markdown 文本构建（纯可测）
+  Future<String> buildMarkdownString() async {
+    final rows = await (_db.select(_db.diaries)
+          ..where((d) => d.deletedAt.isNull())
+          ..orderBy([
+            (d) => OrderingTerm.asc(d.dateDay),
+            (d) => OrderingTerm.asc(d.createdAt),
+          ]))
+        .get();
+    final moodRows = await _db.select(_db.moods).get();
+    final moodNames = {for (final m in moodRows) m.id: m.name};
+
+    String dayCn(int weekday) =>
+        const ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][weekday - 1];
+
+    final b = StringBuffer();
+    b.writeln('# 小满 · 日记导出');
+    b.writeln();
+    final now = DateTime.now();
+    b.writeln(
+      '> 导出时间 ${now.year}-${now.month.toString().padLeft(2, '0')}'
+      '-${now.day.toString().padLeft(2, '0')} · 共 ${rows.length} 篇',
+    );
+    b.writeln();
+
+    int? lastMonth;
+    for (final r in rows) {
+      final month = r.dateDay ~/ 100;
+      if (month != lastMonth) {
+        lastMonth = month;
+        b.writeln('## ${month ~/ 100} 年 ${month % 100} 月');
+        b.writeln();
+      }
+      final d = DateTime(
+        r.dateDay ~/ 10000, (r.dateDay ~/ 100) % 100, r.dateDay % 100,
+      );
+      final meta = <String>[
+        '${d.month}月${d.day}日',
+        dayCn(d.weekday),
+        if (r.moodId != null && moodNames[r.moodId] != null)
+          '心情：${moodNames[r.moodId!]}',
+        if (r.tags.isNotEmpty) '标签：${r.tags}',
+      ].join(' · ');
+      b.writeln('### $meta');
+      b.writeln();
+      if (r.title.isNotEmpty) {
+        b.writeln('**${r.title}**');
+        b.writeln();
+      }
+      if (r.content.isNotEmpty) {
+        b.writeln(r.content);
+        b.writeln();
+      }
+      b.writeln('---');
+      b.writeln();
+    }
+    return b.toString();
   }
 
   Future<void> shareBackup() async {
     final path = await exportAllJson();
     await Share.shareXFiles([XFile(path)], text: '小满备份');
+  }
+
+  Future<void> shareMarkdown() async {
+    final path = await exportMarkdown();
+    await Share.shareXFiles(
+      [XFile(path, mimeType: 'text/markdown')],
+      text: '小满日记导出（Markdown）',
+    );
   }
 
   /// 从 JSON 导入（覆盖恢复）。用 Android SAF 选文件，零新依赖。

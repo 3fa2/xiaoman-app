@@ -30,6 +30,13 @@ class NotificationService {
   static const _todoChannel = 'trinity_todo';
   static const _todoRemindHour = 9;
 
+  /// v5.3：每日写日记提醒（固定 id 双层共用防重通知；
+  /// 插件层 matchDateTimeComponents 每天重复，原生层 repeatDaily 自滚下一天）
+  static const _diaryRemindId = 2000000;
+  static const _diaryChannel = 'trinity_diary';
+  static const _diaryRemindTitle = '该写今天的日记了';
+  static const _diaryRemindBody = '记两笔，日子就留下了';
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static const _channel = MethodChannel('trinity/alarms');
@@ -68,9 +75,14 @@ class NotificationService {
     }
   }
 
-  /// 重建未来 14 天全部提醒（日程 + 待办）。
+  /// 重建未来 14 天全部提醒（日程 + 待办 + 每日写日记提醒）。
   /// 返回警告（UI 显示"提醒未生效"）。
-  Future<List<String>> syncAll(ScheduleRepository repo, {List<Todo>? todos}) async {
+  Future<List<String>> syncAll(
+    ScheduleRepository repo, {
+    List<Todo>? todos,
+    bool diaryRemind = false,
+    int diaryRemindMinutes = 22 * 60,
+  }) async {
     final warnings = <String>[];
     if (!_inited) await init();
 
@@ -187,6 +199,49 @@ class NotificationService {
         'body': '待办到期提醒',
         'epochMs': at.millisecondsSinceEpoch,
         'channel': _todoChannel,
+      });
+    }
+
+    // v5.3：每日写日记提醒
+    if (diaryRemind) {
+      final now2 = DateTime.now();
+      var at = DateTime(
+        now2.year, now2.month, now2.day,
+        diaryRemindMinutes ~/ 60, diaryRemindMinutes % 60,
+      );
+      if (!at.isAfter(now2)) at = at.add(const Duration(days: 1));
+      try {
+        await _plugin.zonedSchedule(
+          _diaryRemindId,
+          _diaryRemindTitle,
+          _diaryRemindBody,
+          tz.TZDateTime.from(at, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _diaryChannel, '写日记提醒',
+              channelDescription: '每日固定时间提醒写日记',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+          androidScheduleMode: exactOk
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+        );
+      } catch (e) {
+        warnings.add('写日记提醒排定失败：$e');
+      }
+      nativePayloads.add({
+        'id': _diaryRemindId,
+        'title': _diaryRemindTitle,
+        'body': _diaryRemindBody,
+        'epochMs': at.millisecondsSinceEpoch,
+        'channel': _diaryChannel,
+        'repeatDaily': true,
+        'payload': 'diary',
       });
     }
 

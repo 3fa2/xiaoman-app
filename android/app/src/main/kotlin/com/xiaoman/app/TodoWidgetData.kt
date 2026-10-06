@@ -32,4 +32,19 @@ object TodoWidgetData {
             // 刷新失败不影响主流程
         }
     }
+
+    /** v5.3：刷新今日日程小组件 */
+    fun refreshScheduleWidgets(context: Context) {
+        try {
+            val m = AppWidgetManager.getInstance(context)
+            val ids = m.getAppWidgetIds(
+                ComponentName(context, ScheduleWidgetProvider::class.java),
+            )
+            if (ids.isNotEmpty()) {
+                ScheduleWidgetProvider().onUpdate(context, m, ids)
+            }
+        } catch (e: Exception) {
+            // 刷新失败不影响主流程
+        }
+    }
 }

@@ -325,6 +325,12 @@ class _TodoRow extends ConsumerWidget {
     final dueText = todo.dueDay == null
         ? null
         : (dueToday ? '今天' : _fmtDay(todo.dueDay!));
+    final repeatText = switch (todo.repeat) {
+      'daily' => '每天',
+      'weekly' => '每周',
+      'monthly' => '每月',
+      _ => null,
+    };
     final accent = todo.done ? p.outline : p.primary;
 
     return Card(
@@ -362,15 +368,39 @@ class _TodoRow extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (dueText != null) ...[
+                    if (dueText != null || repeatText != null) ...[
                       const SizedBox(height: AppSpacing.s4),
-                      Text(
-                        dueText,
-                        style: AppType.caption.copyWith(
-                          color: overdue
-                              ? p.error
-                              : (todo.done ? p.onSurfaceVariant : p.primary),
-                        ),
+                      Row(
+                        children: [
+                          if (dueText != null)
+                            Text(
+                              dueText,
+                              style: AppType.caption.copyWith(
+                                color: overdue
+                                    ? p.error
+                                    : (todo.done ? p.onSurfaceVariant : p.primary),
+                              ),
+                            ),
+                          if (repeatText != null) ...[
+                            const SizedBox(width: AppSpacing.s8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.s4, vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: p.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(AppRadii.rSm),
+                              ),
+                              child: Text(
+                                '循环 · $repeatText',
+                                style: AppType.caption.copyWith(
+                                  color: p.onSurfaceVariant,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ],

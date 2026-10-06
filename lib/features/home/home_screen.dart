@@ -176,10 +176,24 @@ class _MoodCheckin extends ConsumerStatefulWidget {
 }
 
 class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
-  /// 0=今天, 1=昨天（可补昨天的心情）
-  int _dayOffset = 0;
+  /// 心情目标日（今天/昨天/任意过去日，可补记）
+  DateTime _target = _dateOf(DateTime.now());
+
+  static DateTime _dateOf(DateTime d) => DateTime(d.year, d.month, d.day);
 
   int _dayKey(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
+
+  Future<void> _pickTargetDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _target,
+      firstDate: DateTime(2000),
+      lastDate: _dateOf(now),
+    );
+    if (picked == null) return;
+    if (mounted) setState(() => _target = _dateOf(picked));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,8 +207,11 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
           builder: (context, snap) {
             final all = snap.data ?? const <Diary>[];
             final now = DateTime.now();
-            final targetDate = now.subtract(Duration(days: _dayOffset));
-            final targetDay = _dayKey(targetDate);
+            final today = _dateOf(now);
+            final yesterday = _dateOf(now.subtract(const Duration(days: 1)));
+            final isToday = _target == today;
+            final isYesterday = _target == yesterday;
+            final targetDay = _dayKey(_target);
             final targetDiaries =
                 all.where((d) => d.dateDay == targetDay).toList();
             // 同日多篇：取最新创建且带心情的一篇作为"当日心情"
@@ -208,20 +225,28 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _CardHead(
-                  title: '此刻心情',
+                  title: isToday
+                      ? '此刻心情'
+                      : '补心情 · ${_target.month}月${_target.day}日',
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _DayToggle(
                         label: '今天',
-                        selected: _dayOffset == 0,
-                        onTap: () => setState(() => _dayOffset = 0),
+                        selected: isToday,
+                        onTap: () => setState(() => _target = today),
                       ),
                       const SizedBox(width: AppSpacing.s8),
                       _DayToggle(
                         label: '昨天',
-                        selected: _dayOffset == 1,
-                        onTap: () => setState(() => _dayOffset = 1),
+                        selected: isYesterday,
+                        onTap: () => setState(() => _target = yesterday),
+                      ),
+                      const SizedBox(width: AppSpacing.s8),
+                      _DayToggle(
+                        label: '选日期',
+                        selected: !isToday && !isYesterday,
+                        onTap: _pickTargetDate,
                       ),
                     ],
                   ),
@@ -251,12 +276,13 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
                                   : targetDiaries.first);
                           final repo = ref.read(diaryRepoProvider);
                           if (target == null) {
-                            // 当日无日记：先建一条，只记心情
+                            // 当日无日记：先建一条，只记心情（补记落到目标日）
                             final id = await repo.save(
                               id: null,
                               title: '',
                               content: '',
                               extra: m.id,
+                              dateDay: targetDay,
                             );
                             await repo.setMood(diaryId: id, moodId: m.id);
                           } else {

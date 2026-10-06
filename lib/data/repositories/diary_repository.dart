@@ -36,12 +36,14 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
     required String title,
     required String content,
     required int? extra,
+    int? dateDay,
   }) async {
     if (id == null) {
+      // dateDay 非空 = 补记（落到指定日期）；缺省写今天
       final today = DateTime.now();
-      final dateDay = today.year * 10000 + today.month * 100 + today.day;
+      final day = dateDay ?? today.year * 10000 + today.month * 100 + today.day;
       final companion = _companion(
-        dateDay: dateDay, title: title, content: content, moodId: extra,
+        dateDay: day, title: title, content: content, moodId: extra,
       );
       return _db.into(_db.diaries).insert(companion);
     }
@@ -50,6 +52,8 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
         title: Value(title),
         content: Value(content),
         moodId: Value(extra),
+        // 非空 = 用户在编辑器里移动了日期（补记/改期）
+        dateDay: dateDay == null ? const Value.absent() : Value(dateDay),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -88,7 +92,39 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
 
   @override
   Future<void> delete(int id) =>
+      // 软删除（v7 回收站）：30 天内可恢复，启动时自动清过期
+      (_db.update(_db.diaries)..where((d) => d.id.equals(id))).write(
+        DiariesCompanion(
+          deletedAt: Value(DateTime.now()),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  @override
+  Future<void> restoreDiary(int id) =>
+      (_db.update(_db.diaries)..where((d) => d.id.equals(id))).write(
+        const DiariesCompanion(deletedAt: Value(null)),
+      );
+
+  @override
+  Future<void> purgeDiary(int id) =>
       (_db.delete(_db.diaries)..where((d) => d.id.equals(id))).go();
+
+  @override
+  Stream<List<Diary>> watchDeleted() {
+    final q = _db.select(_db.diaries)
+      ..where((d) => d.deletedAt.isNotNull())
+      ..orderBy([(d) => OrderingTerm.desc(d.deletedAt)]);
+    return q.watch().map((rows) => rows.map(_map).toList());
+  }
+
+  @override
+  Future<List<int>> deletedBefore(DateTime cutoff) async {
+    final rows = await (_db.select(_db.diaries)
+          ..where((d) => d.deletedAt.isNotNull() & d.deletedAt.isSmallerThanValue(cutoff)))
+        .get();
+    return rows.map((r) => r.id).toList();
+  }
 
   Diary _map(DiariesRow row) => Diary(
         id: row.id,
@@ -102,12 +138,13 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
         moodId: row.moodId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        deletedAt: row.deletedAt,
       );
 
   @override
   Stream<List<Diary>> watchByDate(int dateDay) {
     final q = _db.select(_db.diaries)
-      ..where((d) => d.dateDay.equals(dateDay))
+      ..where((d) => d.dateDay.equals(dateDay) & d.deletedAt.isNull())
       ..orderBy([(d) => OrderingTerm.desc(d.createdAt)]);
     return q.watch().map((rows) => rows.map(_map).toList());
   }
@@ -115,6 +152,7 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
   @override
   Stream<List<Diary>> watchAll() {
     final q = _db.select(_db.diaries)
+      ..where((d) => d.deletedAt.isNull())
       ..orderBy([(d) => OrderingTerm.desc(d.dateDay)]);
     return q.watch().map((rows) => rows.map(_map).toList());
   }
@@ -124,7 +162,9 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
     final from = yearMonth * 100;
     final to = from + 99;
     final q = _db.select(_db.diaries)
-      ..where((d) => d.dateDay.isBetweenValues(from, to))
+      ..where(
+        (d) => d.dateDay.isBetweenValues(from, to) & d.deletedAt.isNull(),
+      )
       ..orderBy([(d) => OrderingTerm.desc(d.dateDay)]);
     return q.watch().map((rows) => rows.map(_map).toList());
   }
@@ -134,7 +174,9 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
     final from = yearMonth * 100;
     final to = from + 99;
     final q = _db.select(_db.diaries)
-      ..where((d) => d.dateDay.isBetweenValues(from, to));
+      ..where(
+        (d) => d.dateDay.isBetweenValues(from, to) & d.deletedAt.isNull(),
+      );
     if (notebookId == null) {
       // 全部
     } else if (notebookId == -1) {
@@ -149,7 +191,7 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
   @override
   Stream<List<Diary>> watchByDateIn(int dateDay, int? notebookId) {
     final q = _db.select(_db.diaries)
-      ..where((d) => d.dateDay.equals(dateDay));
+      ..where((d) => d.dateDay.equals(dateDay) & d.deletedAt.isNull());
     if (notebookId == null) {
       // 全部
     } else if (notebookId == -1) {
@@ -228,7 +270,7 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
     await (_db.update(_db.diaries)
           ..where((d) => d.notebookId.equals(id)))
         .write(
-      DiariesCompanion(notebookId: Value(null)),
+      const DiariesCompanion(notebookId: Value(null)),
     );
     await (_db.delete(_db.diaryNotebooks)..where((n) => n.id.equals(id))).go();
   }
@@ -291,7 +333,9 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
     int toDay,
   ) async {
     final diaryRows = await (_db.select(_db.diaries)
-          ..where((d) => d.dateDay.isBetweenValues(fromDay, toDay))
+          ..where(
+            (d) => d.dateDay.isBetweenValues(fromDay, toDay) & d.deletedAt.isNull(),
+          )
           ..orderBy([(d) => OrderingTerm.asc(d.dateDay)]))
         .get();
     final moodRows = await _db.select(_db.moods).get();

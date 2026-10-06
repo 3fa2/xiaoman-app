@@ -3,4 +3,10 @@
     <!-- v5.0 待办小组件描述（appwidget-provider 的 description 必须走资源引用） -->
     <string name="widget_todo_desc">待办：未完成数和最近几条，点一下就能勾掉</string>
     <string name="widget_todo_small_desc">待办（小）：只看数字和最近两条</string>
+    <!-- v5.3 -->
+    <string name="widget_schedule_desc">今日日程：剩余数和接下来几项，点开看完整安排</string>
+    <!-- 长按图标快捷方式 -->
+    <string name="shortcut_diary">写日记</string>
+    <string name="shortcut_todo_add">记一条待办</string>
+    <string name="shortcut_schedule">今日日程</string>
 </resources>

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../di/providers.dart';
+import '../domain/models/schedule.dart';
 import '../domain/models/todo.dart';
 import '../features/todo/todo_add_sheet.dart';
 import 'router.dart';
@@ -21,6 +22,7 @@ import 'router.dart';
 class WidgetSync {
   static const _ch = MethodChannel('trinity/widget');
   static StreamSubscription<dynamic>? _sub;
+  static StreamSubscription<dynamic>? _schedSub;
 
   /// main bootstrap 里挂一次：订阅数据 + 注册原生回调
   static void attach(WidgetRef ref) {
@@ -44,6 +46,15 @@ class WidgetSync {
       // 待办变化 → 提醒全量重建
       unawaited(ref.read(reminderWarningsProvider.notifier).syncNow());
     });
+    // v5.3：今日日程小组件——订阅今天的日程变化（含 regenerate 插入实例）
+    final now = DateTime.now();
+    final todayDay = now.year * 10000 + now.month * 100 + now.day;
+    _schedSub?.cancel();
+    _schedSub = ref
+        .read(scheduleRepoProvider)
+        .watchDay(todayDay)
+        .distinct()
+        .listen((blocks) => _pushSchedule(blocks, todayDay));
   }
 
   /// 冷启动补取：engine 就绪前原生把动作暂存在 launchAction
@@ -99,18 +110,58 @@ class WidgetSync {
     }).catchError((_) {});
   }
 
+  /// v5.3：推今日日程给小组件（接下来 3 条 + 剩余数）
+  static void _pushSchedule(List<ScheduleInstance> blocks, int todayDay) {
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
+    final upcoming = blocks
+        .where((b) => b.status == BlockStatus.pending && b.endMinutes >= nowMinutes)
+        .toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    final json = jsonEncode(
+      upcoming
+          .take(3)
+          .map((b) => {
+                'time':
+                    '${(b.startMinutes ~/ 60).toString().padLeft(2, '0')}:${(b.startMinutes % 60).toString().padLeft(2, '0')}',
+                'title': b.title,
+                'done': false,
+              })
+          .toList(),
+    );
+    _ch.invokeMethod<void>('updateSchedule', {
+      'schedule': json,
+      'remaining': upcoming.length,
+      'dateDay': todayDay,
+    }).catchError((_) {});
+  }
+
   static void _handleAction(WidgetRef ref, String? action) {
     if (action == null) return;
-    if (action != 'todo' && action != 'todo_add') return;
     final ctx = rootKey.currentContext;
     if (ctx == null) return;
-    ctx.go('/todo');
-    if (action != 'todo_add') return;
-    final gate = ref.read(lockGateProvider);
-    if (gate.required && !gate.unlocked) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = rootKey.currentContext;
-      if (c != null) showTodoAddSheet(c);
-    });
+    switch (action) {
+      case 'todo':
+      case 'todo_add':
+        ctx.go('/todo');
+        if (action != 'todo_add') return;
+        final gate = ref.read(lockGateProvider);
+        if (gate.required && !gate.unlocked) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final c = rootKey.currentContext;
+          if (c != null) showTodoAddSheet(c);
+        });
+      case 'diary':
+        // 写日记提醒/快捷方式：直达编辑器（锁屏时只到日记页，解锁后再操作）
+        ctx.go('/diary');
+        final gate = ref.read(lockGateProvider);
+        if (gate.required && !gate.unlocked) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final c = rootKey.currentContext;
+          if (c != null) c.push('/diary/edit');
+        });
+      case 'schedule':
+        ctx.go('/schedule');
+    }
   }
 }

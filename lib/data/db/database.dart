@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -64,6 +64,11 @@ class AppDatabase extends _$AppDatabase {
           // v5 → v6：独立待办表（v5.0 桌面小组件 + 待办 tab）
           if (from < 6) {
             await m.createTable(todos);
+          }
+          // v6 → v7：日记回收站（软删除）+ 待办循环重复
+          if (from < 7) {
+            await m.addColumn(diaries, diaries.deletedAt);
+            await m.addColumn(todos, todos.repeat);
           }
         },
       );
@@ -152,7 +157,8 @@ class AppDatabase extends _$AppDatabase {
     if (q.length >= 3) {
       final rows = await customSelect(
         'SELECT d.* FROM diaries d JOIN diaries_fts f ON d.id = f.rowid '
-        'WHERE diaries_fts MATCH ? ORDER BY d.date_day DESC',
+        'WHERE diaries_fts MATCH ? AND d.deleted_at IS NULL '
+        'ORDER BY d.date_day DESC',
         variables: [Variable(_ftsQuery(q))],
         readsFrom: {diaries},
       ).map(_rowToDiary).get();
@@ -160,7 +166,8 @@ class AppDatabase extends _$AppDatabase {
     }
     final like = '%$q%';
     final rows = await customSelect(
-      'SELECT * FROM diaries WHERE content LIKE ? OR title LIKE ? OR tags LIKE ? '
+      'SELECT * FROM diaries WHERE deleted_at IS NULL '
+      'AND (content LIKE ? OR title LIKE ? OR tags LIKE ?) '
       'ORDER BY date_day DESC',
       variables: [Variable(like), Variable(like), Variable(like)],
       readsFrom: {diaries},
