@@ -38,6 +38,7 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
   int _colorIndex = 0;
   int _remindBefore = 0;
   bool _detached = false;
+  bool _done = false;
   bool _loaded = false;
 
   static int _today() {
@@ -64,6 +65,7 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
         _description.text = inst.description;
         _colorIndex = inst.colorIndex;
         _detached = inst.detached;
+        _done = inst.status == BlockStatus.done;
         // 从 remindAt 反推提前量回填：否则只改标题点保存也会把提醒清掉
         final remindAt = inst.remindAt;
         if (remindAt != null) {
@@ -90,6 +92,19 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
       _dateDay = widget.dateDay ?? _today();
     }
     if (mounted) setState(() => _loaded = true);
+  }
+
+  Future<void> _toggleDone() async {
+    final id = widget.instanceId;
+    if (id == null) return;
+    final inst = await ref.read(scheduleRepoProvider).getInstance(id);
+    if (inst == null) return;
+    final next =
+        inst.status == BlockStatus.done ? BlockStatus.pending : BlockStatus.done;
+    await ref.read(scheduleRepoProvider).setStatus(id: id, status: next);
+    // 完成态变了要重排提醒：已完成块的闹钟不能照响（幽灵通知）
+    ref.read(reminderWarningsProvider.notifier).syncNow();
+    if (mounted) setState(() {});
   }
 
   Future<void> _save() async {
@@ -165,6 +180,18 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
           widget.instanceId == null ? '新建时间块' : '编辑时间块',
         ),
         actions: [
+          if (widget.instanceId != null)
+            IconButton(
+              tooltip: _done ? '标记为未完成' : '标记完成',
+              onPressed: _toggleDone,
+              icon: PhosphorIcon(
+                _done
+                    ? PhosphorIconsFill.checkCircle
+                    : PhosphorIconsRegular.circle,
+                size: 24,
+                color: _done ? p.primary : p.onSurfaceVariant,
+              ),
+            ),
           TextButton(onPressed: _save, child: const Text('保存')),
         ],
       ),

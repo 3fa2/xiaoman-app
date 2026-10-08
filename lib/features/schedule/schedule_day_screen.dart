@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -8,185 +9,123 @@ import '../../design/tokens.dart';
 import '../../di/providers.dart';
 import '../../domain/models/schedule.dart';
 import '../shared/widgets.dart';
+import 'schedule_today_screen.dart' show TimeLineView;
 
-/// 日程 · 未来 N 天：横向日期条 + 每日块列表（滚动窗口 14 天）。
-/// 也用于从日期条点进来的单日视图。
-class ScheduleDayScreen extends ConsumerWidget {
+/// 日程 · 单日时间轴（v5.5.0 重做）：任意一天（含过去）的 0-24h 时间轴，
+/// 与「今天」页同一套交互：块可点编辑、长按拖动改时间（15 分钟吸附）。
+/// AppBar ‹ › 切前后一天（replace 保持栈不增长）。
+class ScheduleDayScreen extends ConsumerStatefulWidget {
   const ScheduleDayScreen({super.key, required this.dateDay});
 
   final int dateDay;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ScheduleDayScreen> createState() => _ScheduleDayScreenState();
+}
+
+class _ScheduleDayScreenState extends ConsumerState<ScheduleDayScreen> {
+  /// 拖拽改时间：保留时长与提醒提前量，模板实例自动分离（与今天页同一套）
+  Future<void> _moveBlock(ScheduleInstance b, int newStart) async {
+    final repo = ref.read(scheduleRepoProvider);
+    int? remindBefore;
+    final remindAt = b.remindAt;
+    if (remindAt != null) {
+      final day = DateDay.toDateTime(b.dateDay);
+      final blockStart = DateTime(day.year, day.month, day.day)
+          .add(Duration(minutes: b.startMinutes));
+      remindBefore = blockStart.difference(remindAt).inMinutes;
+    }
+    await repo.saveInstance(
+      id: b.id,
+      templateId: b.templateId,
+      dateDay: b.dateDay,
+      startMinutes: newStart,
+      durationMinutes: b.durationMinutes,
+      title: b.title,
+      description: b.description,
+      colorIndex: b.colorIndex,
+      detachOnEdit: true,
+      remindMinutesBefore: remindBefore != null && remindBefore > 0
+          ? remindBefore
+          : null,
+    );
+    ref.read(reminderWarningsProvider.notifier).syncNow();
+  }
+
+  void _jump(int delta) {
+    final next = DateDay.addDays(widget.dateDay, delta);
+    context.pushReplacement('/schedule/day/$next');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
-    final start = DateDay.toDateTime(dateDay);
-    final end = start.add(const Duration(days: 14));
-    final startDay = start.year * 10000 + start.month * 100 + start.day;
-    final endDay = end.year * 10000 + end.month * 100 + end.day;
+    final d = DateDay.toDateTime(widget.dateDay);
+    final now = DateTime.now();
+    final isToday = widget.dateDay ==
+        now.year * 10000 + now.month * 100 + now.day;
+    final instances =
+        ref.watch(scheduleRepoProvider).watchDay(widget.dateDay);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          DateFormat('M月d日起 · 14 天', 'zh_CN').format(start),
+          isToday
+              ? '今天'
+              : DateFormat('M月d日 EEEE', 'zh_CN').format(d),
         ),
+        actions: [
+          IconButton(
+            onPressed: () => _jump(-1),
+            tooltip: '前一天',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.caretLeft,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+          IconButton(
+            onPressed: () => _jump(1),
+            tooltip: '后一天',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.caretRight,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
       floatingActionButton: AppFab(
         icon: PhosphorIconsRegular.calendarPlus,
         tooltip: '新建日程',
-        onPressed: () => context.openScheduleEdit(dateDay: dateDay),
+        onPressed: () => context.openScheduleEdit(dateDay: widget.dateDay),
       ),
       body: StreamBuilder<List<ScheduleInstance>>(
-        stream: ref.watch(scheduleRepoProvider).watchRange(startDay, endDay),
+        stream: instances,
         builder: (context, snap) {
-          final all = snap.data ?? const <ScheduleInstance>[];
-          final byDay = <int, List<ScheduleInstance>>{};
-          for (final b in all) {
-            byDay.putIfAbsent(b.dateDay, () => []).add(b);
-          }
-          if (all.isEmpty) {
-            return const EmptyState(
-              icon: PhosphorIconsRegular.calendarBlank,
-              title: '这两周没有安排',
-              hint: '点右下角加一个时间块',
+          final list = snap.data ?? const <ScheduleInstance>[];
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(AppSpacing.page),
+              child: SkeletonList(),
             );
           }
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
-            ),
-            itemCount: 14,
-            itemBuilder: (context, i) {
-              final day = DateDay.addDays(dateDay, i);
-              final blocks = byDay[day] ?? const <ScheduleInstance>[];
-              final d = DateDay.toDateTime(day);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: AppSpacing.s16, bottom: AppSpacing.s8,
-                    ),
-                    child: Text(
-                      DateFormat('M月d日 EEEE', 'zh_CN').format(d),
-                      style: AppType.headline.copyWith(color: p.onSurface),
-                    ),
-                  ),
-                  if (blocks.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-                      child: Text(
-                        '空',
-                        style: AppType.caption.copyWith(
-                          color: p.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  else
-                    ...blocks.map(
-                      (b) => Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-                        child: _DayBlockRow(block: b),
-                      ),
-                    ),
-                ],
-              );
-            },
+          if (list.isEmpty) {
+            return EmptyState(
+              icon: PhosphorIconsRegular.calendarBlank,
+              title: '这天没有安排',
+              hint: isToday ? '加一个时间块，或建个每天重复的模板' : '点右下角补一个',
+              actionLabel: isToday ? '管理重复模板' : null,
+              onAction: isToday ? () => context.openTemplates() : null,
+            );
+          }
+          return TimeLineView(
+            dateDay: widget.dateDay,
+            blocks: list,
+            nowMinutes: now.hour * 60 + now.minute,
+            onBlockTap: (b) => context.openScheduleEdit(instanceId: b.id),
+            onBlockMove: _moveBlock,
           );
         },
       ),
     );
-  }
-}
-
-class _DayBlockRow extends ConsumerWidget {
-  const _DayBlockRow({required this.block});
-
-  final ScheduleInstance block;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final p = Theme.of(context).colorScheme;
-    final color = SchedulePalette.of(block.colorIndex, dark: dark);
-    final done = block.status == BlockStatus.done;
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadii.rLg),
-        onTap: () => context.openScheduleEdit(instanceId: block.id),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.cardPad),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(AppRadii.rSm),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.s12),
-              SizedBox(
-                width: 96,
-                child: Text(
-                  '${_hm(block.startMinutes)}\n${_hm(block.endMinutes)}',
-                  style: AppType.caption.copyWith(color: p.onSurfaceVariant),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      block.title,
-                      style: AppType.headline.copyWith(
-                        color: done ? p.onSurfaceVariant : p.onSurface,
-                        decoration:
-                            done ? TextDecoration.lineThrough : null,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (block.description.isNotEmpty)
-                      Text(
-                        block.description,
-                        style: AppType.caption.copyWith(
-                          color: p.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () async {
-                  final next = done ? BlockStatus.pending : BlockStatus.done;
-                  await ref
-                      .read(scheduleRepoProvider)
-                      .setStatus(id: block.id, status: next);
-                  // 标记完成/恢复都要重排提醒：否则已完成块的闹钟照响（幽灵通知）
-                  ref.read(reminderWarningsProvider.notifier).syncNow();
-                },
-                icon: PhosphorIcon(
-                  done
-                      ? PhosphorIconsFill.checkCircle
-                      : PhosphorIconsRegular.circle,
-                  size: 22,
-                  color: done ? p.primary : p.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _hm(int minutes) {
-    final h = (minutes ~/ 60).toString().padLeft(2, '0');
-    final m = (minutes % 60).toString().padLeft(2, '0');
-    return '$h:$m';
   }
 }

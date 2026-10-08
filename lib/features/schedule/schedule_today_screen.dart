@@ -75,6 +75,27 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
       appBar: AppBar(
         title: const Text('日程'),
         actions: [
+          // v5.5.0：日历跳转（可跳任意过去日期，配合日期条回看历史日程）
+          IconButton(
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+              if (!mounted) return;
+              context.openScheduleDay(
+                picked.year * 10000 + picked.month * 100 + picked.day,
+              );
+            },
+            tooltip: '跳到某天',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.calendarBlank,
+              color: p.onSurfaceVariant,
+            ),
+          ),
           IconButton(
             onPressed: () => context.openTemplates(),
             tooltip: '重复模板',
@@ -172,27 +193,45 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
   }
 }
 
-/// 顶部横向日期条：今天 + 未来 13 天，点进单日页
-/// （日程 · 未来 N 天 的入口；Today 页保持单一焦点）
-class _DayStrip extends StatelessWidget {
+/// 顶部横向日期条：过去 7 天 + 今天 + 未来 13 天（v5.5.0 起可回看历史日程），
+/// 点进单日页（单日时间轴）。过去的日期文字弱化，今天高亮、初始定位到今天。
+class _DayStrip extends StatefulWidget {
   const _DayStrip({required this.todayDay});
 
   final int todayDay;
 
   @override
+  State<_DayStrip> createState() => _DayStripState();
+}
+
+class _DayStripState extends State<_DayStrip> {
+  final _scroll = ScrollController(initialScrollOffset: 7 * 60.0);
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     const cn = ['一', '二', '三', '四', '五', '六', '日'];
     return SizedBox(
       height: 56,
       child: ListView.builder(
+        controller: _scroll,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-        itemCount: 14,
+        // -7 天到 +13 天，共 21 格（更早的用 AppBar 日历跳）
+        itemCount: 21,
         itemBuilder: (context, i) {
-          final d = DateTime.now().add(Duration(days: i));
+          final offset = i - 7;
+          final d = DateTime.now().add(Duration(days: offset));
           final dd = d.year * 10000 + d.month * 100 + d.day;
-          final isToday = i == 0;
+          final isToday = offset == 0;
+          final isPast = offset < 0;
           return Padding(
             padding: const EdgeInsets.only(right: AppSpacing.s8),
             child: InkWell(
@@ -204,7 +243,12 @@ class _DayStrip extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isToday ? p.primaryContainer : p.surface,
                   borderRadius: BorderRadius.circular(AppRadii.rMd),
-                  border: Border.all(color: p.outlineVariant),
+                  border: Border.all(
+                    // 今天主色描边；过去日期边框弱化
+                    color: isToday
+                        ? (dark ? p.primary : p.primary.withAlpha(120))
+                        : p.outlineVariant,
+                  ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -213,17 +257,20 @@ class _DayStrip extends StatelessWidget {
                       '${d.month}/${d.day}',
                       style: AppType.label.copyWith(
                         color: isToday
-                            ? (Theme.of(context).brightness ==
-                                    Brightness.dark
-                                ? p.onSurface
-                                : p.primary)
-                            : p.onSurface,
+                            ? (dark ? p.onSurface : p.primary)
+                            : (isPast ? p.onSurfaceVariant : p.onSurface),
+                        // 过去的日期弱化
+                        fontWeight: isPast ? FontWeight.w400 : null,
                       ),
                     ),
                     Text(
-                      cn[d.weekday - 1],
+                      isToday ? '今' : cn[d.weekday - 1],
                       style: AppType.caption.copyWith(
-                        color: p.onSurfaceVariant,
+                        color: isToday
+                            ? p.primary
+                            : (isPast
+                                ? p.onSurfaceVariant.withAlpha(130)
+                                : p.onSurfaceVariant),
                       ),
                     ),
                   ],
