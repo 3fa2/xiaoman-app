@@ -91,12 +91,19 @@ object TodoWidgetStore {
                     .put("done", t.done),
             )
         }
-        // 记录待同步 id
-        val pending = prefs(ctx).getStringSet(KEY_PENDING_TOGGLE, emptySet()) ?: emptySet()
+        // 待同步队列语义：翻转为 done → 加入队列（App 启动时补落库）；
+        // 翻转回未完成 → 从队列移除（用户勾了又取消，最终意图是未完成，
+        // 不能等下次启动被强制标完成）
+        val pendingSet =
+            prefs(ctx).getStringSet(KEY_PENDING_TOGGLE, emptySet()) ?: emptySet()
+        val flippedTarget = flipped.firstOrNull { it.id == id }?.done ?: true
+        val newPending =
+            if (flippedTarget) pendingSet + id.toString()
+            else pendingSet - id.toString()
         val prevCount = prefs(ctx).getInt(KEY_OPEN_COUNT, -1)
         val editor = prefs(ctx).edit()
             .putString(KEY_TODOS, arr.toString())
-            .putStringSet(KEY_PENDING_TOGGLE, pending + id.toString())
+            .putStringSet(KEY_PENDING_TOGGLE, newPending)
         if (prevCount >= 0) {
             editor.putInt(KEY_OPEN_COUNT, (prevCount + delta).coerceAtLeast(0))
         }

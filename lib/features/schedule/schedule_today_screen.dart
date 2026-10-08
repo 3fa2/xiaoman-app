@@ -176,12 +176,13 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
     required String title,
     required int startMinutes,
   }) async {
+    // 一次取值：避免跨午夜瞬间三次 now() 拼出不一致的 dateDay
+    final n = DateTime.now();
+    final today = n.year * 10000 + n.month * 100 + n.day;
     await ref.read(scheduleRepoProvider).saveInstance(
       id: null,
       templateId: null,
-      dateDay: DateTime.now().year * 10000 +
-          DateTime.now().month * 100 +
-          DateTime.now().day,
+      dateDay: today,
       startMinutes: startMinutes,
       durationMinutes: 30,
       title: title,

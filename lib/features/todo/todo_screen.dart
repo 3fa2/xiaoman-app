@@ -234,8 +234,8 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.s12),
-              // 未完成列表
-              if (active.isEmpty)
+              // 未完成列表（选「已完成」档时本来就该为空，不再显示提示）
+              if (active.isEmpty && _filter != _Filter.done)
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.page, vertical: AppSpacing.s8,

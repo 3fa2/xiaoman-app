@@ -104,7 +104,9 @@ class _ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
     await ref.read(scheduleRepoProvider).setStatus(id: id, status: next);
     // 完成态变了要重排提醒：已完成块的闹钟不能照响（幽灵通知）
     ref.read(reminderWarningsProvider.notifier).syncNow();
-    if (mounted) setState(() {});
+    // _done 字段必须同步更新：setState(() {}) 空重建不会改字段值，
+    // 否则图标永远停在旧状态（点完成没反应的假象）
+    if (mounted) setState(() => _done = next == BlockStatus.done);
   }
 
   Future<void> _save() async {

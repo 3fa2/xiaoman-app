@@ -64,33 +64,23 @@ class WidgetSync {
       if (action != null) _handleAction(ref, action);
     } catch (_) {}
 
-    // 同步 App 没运行时小组件标记的勾选
+    // 同步 App 没运行时小组件标记的勾选。
+    // pending 队列只记「翻转为完成」的 id（勾了又取消的已被原生侧移除），
+    // 所以统一落为 done=true；重复/不存在的 id 幂等无害。
     try {
       final ids = await _ch.invokeMethod<List<dynamic>>('drainPending');
       if (ids != null && ids.isNotEmpty) {
         final repo = ref.read(todoRepoProvider);
         for (final id in ids) {
-          final i = (id as num).toInt();
-          // 读取当前状态后翻转（drainPending 只返回 id，不知道当前状态）
-          // 通过 toggle 实现：done = NOT done
-          await repo.toggle(id: i, done: !_currentDone(ref, i));
+          await repo.toggle(id: (id as num).toInt(), done: true);
         }
       }
     } catch (_) {}
   }
 
-  static bool _currentDone(WidgetRef ref, int id) {
-    // 这里无法同步获取 Stream 的当前值，用 false 作为默认（toggle → done=true）
-    // 实际上 watchAll 的下一帧会推送正确状态，不影响最终一致性
-    return false;
-  }
-
   static Future<void> _doToggle(WidgetRef ref, int id) async {
-    // 小组件已经翻转了缓存中的 done 状态，这里执行数据库真正的 toggle
-    // 由于不知道数据库中的当前状态，用 toggle(id, done: !currentDone) 模式
-    // 但 repo.toggle 需要 done 参数——这里通过读取当前流来获取
-    // 简化方案：直接调用 toggle 传 done=true（小组件勾选=标记完成）
-    // 如果用户在 App 里又取消勾选，watchAll 会回流修正
+    // 小组件只显示未完成列表，勾选必为「标记完成」；
+    // 若之后在 App 内取消勾选，watchAll 回流会自动修正小组件
     await ref.read(todoRepoProvider).toggle(id: id, done: true);
   }
 

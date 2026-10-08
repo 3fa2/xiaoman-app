@@ -482,7 +482,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
       onResult: (result) {
         final text = result.recognizedWords;
         if (text.isNotEmpty) {
-          _content.text += (_content.text.isEmpty ? '' : '') + text;
+          _content.text += text;
           _controller.onChanged(
             title: _title.text, content: _content.text, extra: _moodId,
           );
