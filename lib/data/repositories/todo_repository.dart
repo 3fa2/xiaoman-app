@@ -113,6 +113,14 @@ class TodoRepositoryImpl implements TodoRepository {
   }
 
   @override
+  Future<int> clearDone() async {
+    final count = await (_db.delete(_db.todos)
+          ..where((t) => t.done.equals(true)))
+        .go();
+    return count;
+  }
+
+  @override
   Future<void> delete(int id) =>
       (_db.delete(_db.todos)..where((t) => t.id.equals(id))).go();
 }

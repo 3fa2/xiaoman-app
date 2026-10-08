@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../design/motion.dart';
 import '../../design/tokens.dart';
+import '../../domain/models/diary.dart';
 
 /// ============================================================
 /// 公共组件库 v4（全部走 design token）
@@ -440,6 +441,45 @@ class MoodDot extends StatelessWidget {
           style: AppType.caption.copyWith(color: p.onSurfaceVariant),
         ),
       ],
+    );
+  }
+}
+
+/// 心情胶囊：心情色底 + 心情名，列表/详情里的醒目心情标识（替代纯小圆点）
+class MoodChip extends StatelessWidget {
+  const MoodChip({super.key, required this.mood, this.dense = false});
+
+  final Mood mood;
+  final bool dense; // 紧凑版（首页行内）
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final color = MoodPalette.colorOf(mood.hue, dark: dark);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? AppSpacing.s8 : AppSpacing.s12,
+        vertical: dense ? 2 : AppSpacing.s4 + 1,
+      ),
+      decoration: BoxDecoration(
+        color: color.withAlpha(dark ? 58 : 36),
+        borderRadius: BorderRadius.circular(AppRadii.rSm),
+        border: Border.all(color: color.withAlpha(dark ? 150 : 110), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MoodDot(color: color, size: dense ? 6 : 8),
+          const SizedBox(width: AppSpacing.s4),
+          Text(
+            mood.name,
+            style: (dense ? AppType.caption : AppType.label).copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

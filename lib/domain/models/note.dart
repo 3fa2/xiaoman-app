@@ -24,6 +24,7 @@ class Note {
   final bool pinned;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt; // 回收站：非空=已软删除（v8）
 
   const Note({
     required this.id,
@@ -34,6 +35,7 @@ class Note {
     required this.pinned,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
   });
 
   String get summary {

@@ -482,15 +482,14 @@ class _MoodChip extends StatelessWidget {
 
 // ─────────────────────────── ② 今日日记卡 ───────────────────────────
 
-class _TodayDiariesBento extends StatelessWidget {
+class _TodayDiariesBento extends ConsumerWidget {
   const _TodayDiariesBento({required this.stream, required this.moods});
 
   final Stream<List<Diary>> stream;
   final Stream<List<Mood>> moods;
 
   @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = Theme.of(context).colorScheme;
     return StreamBuilder<List<Mood>>(
       stream: moods,
@@ -519,7 +518,11 @@ class _TodayDiariesBento extends StatelessWidget {
                     sub: list.isEmpty ? null : '${list.length} 篇',
                     trailing: TextActionButton(
                       label: '全部',
-                      onPressed: () => context.openDiarySearch(),
+                      // 直达日记 tab 的时间线视图（不再绕搜索页）
+                      onPressed: () {
+                        ref.read(diaryViewModeProvider.notifier).state = true;
+                        context.go('/diary');
+                      },
                     ),
                   ),
                   if (shown.isEmpty)
@@ -553,12 +556,8 @@ class _TodayDiariesBento extends StatelessWidget {
                     for (var i = 0; i < shown.length; i++) ...[
                       _DiaryLine(
                         diary: shown[i],
-                        moodColor: shown[i].moodId != null &&
-                                moodMap[shown[i].moodId!] != null
-                            ? MoodPalette.colorOf(
-                                moodMap[shown[i].moodId!]!.hue,
-                                dark: dark,
-                              )
+                        mood: shown[i].moodId != null
+                            ? moodMap[shown[i].moodId!]
                             : null,
                       ),
                       if (i != shown.length - 1)
@@ -574,11 +573,10 @@ class _TodayDiariesBento extends StatelessWidget {
   }
 }
 
-/// 今日日记卡内单行
 class _DiaryLine extends StatelessWidget {
-  const _DiaryLine({required this.diary, required this.moodColor});
+  const _DiaryLine({required this.diary, this.mood});
   final Diary diary;
-  final Color? moodColor;
+  final Mood? mood;
 
   @override
   Widget build(BuildContext context) {
@@ -594,8 +592,8 @@ class _DiaryLine extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
         child: Row(
           children: [
-            if (moodColor != null) ...[
-              MoodDot(color: moodColor!),
+            if (mood != null) ...[
+              MoodChip(mood: mood!, dense: true),
               const SizedBox(width: AppSpacing.s8),
             ],
             Expanded(

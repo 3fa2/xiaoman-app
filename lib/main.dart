@@ -130,20 +130,25 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
       // 小组件事务不影响启动
     }
 
-    // v5.3：回收站过期清理（>30 天）→ 再每日自动备份。
+    // v5.3/v5.4：回收站过期清理（日记+备忘，>30 天）→ 再每日自动备份。
     // 串行：备份的应是清理后的状态，避免把待清理条目也备进去。
     unawaited(() async {
       try {
         final diaryRepo = ref.read(diaryRepoProvider);
+        final noteRepo = ref.read(noteRepoProvider);
         final mediaRepo = ref.read(mediaRepoProvider);
         final cutoff = DateTime.now().subtract(const Duration(days: 30));
-        final stale = await diaryRepo.deletedBefore(cutoff);
-        for (final id in stale) {
+        final staleDiaries = await diaryRepo.deletedBefore(cutoff);
+        for (final id in staleDiaries) {
           final items = await mediaRepo.listFor(MediaOwner.diary, id);
           for (final m in items) {
             await mediaRepo.remove(m.id);
           }
           await diaryRepo.purgeDiary(id);
+        }
+        final staleNotes = await noteRepo.deletedNotesBefore(cutoff);
+        for (final id in staleNotes) {
+          await noteRepo.purgeNote(id);
         }
       } catch (e) {
         // 清理失败下次启动重试

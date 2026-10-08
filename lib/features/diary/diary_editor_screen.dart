@@ -60,6 +60,8 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
 
   late final AutosaveController _controller;
   int? _savedId;
+  /// 退出流程进行中（防双击完成/系统返回并发触发两次 flush+pop）
+  bool _popping = false;
 
   /// 实体 id：编辑已有 → 固定；新建 → 首存后回填
   int? get _entityId => widget.diaryId ?? _savedId;
@@ -344,9 +346,16 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
 
   Future<void> _onPopInvoked(bool didPop, _) async {
     if (didPop) return;
+    if (_popping) return; // 并发退出（双击完成/保存中按返回）：flush 只跑一次
+    _popping = true;
     await _controller.flush(
       title: _title.text, content: _content.text, extra: _moodId,
     );
+    // 保存失败不许走：内容还留在页面上，错误 pill 可见可重试（UI 不撒谎）
+    if (!mounted || _controller.status == SaveStatus.error) {
+      _popping = false; // 允许重试后再退出
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
   // ---- 媒体导入 ----
@@ -491,11 +500,12 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
         : ref.watch(mediaRepoProvider).watchFor(MediaOwner.diary, _entityId!);
 
     return PopScope(
-      // dirty 也不放行：canPop=true 时系统直接 pop（didPop=true），
-      // _onPopInvoked 的早退分支让 flush 永不执行 → 2 秒去抖窗口内的编辑丢失。
-      // saved/idle 直接走；dirty/saving 拦下来 flush 后手动 pop。
-      canPop: _controller.status != SaveStatus.saving &&
-          _controller.status != SaveStatus.dirty,
+      // 恒 false：canPop 表达式在「typing 后重建帧完成前点完成」的微竞态下
+      // 仍是旧值 true 会直弹丢字；恒 false 由 _onPopInvoked 读 controller
+      // 实时状态统一决定（saved/idle flush 为空操作，只多一个微任务跳）。
+      // ⚠️ 注意：PopScope 只拦截 maybePop/系统返回；
+      // 任何直接 Navigator.pop() 的路径（如完成按钮）都会绕过它。
+      canPop: false,
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(
@@ -511,7 +521,10 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              // maybePop 走 PopScope 判定（canPop:false → flush 后手动 pop）。
+              // 此前的 Navigator.pop() 直弹路由、绕过 PopScope，
+              // 2 秒去抖窗口内的输入直接丢（v5.4.2 修复的真根因）。
+              onPressed: () => Navigator.of(context).maybePop(),
               child: const Text('完成'),
             ),
           ],
@@ -878,8 +891,12 @@ class _MoodRow extends StatelessWidget {
                 ),
                 if (current != null) ...[
                   const SizedBox(width: AppSpacing.s8),
-                  MoodDot(
-                    color: MoodPalette.colorOf(current.hue, dark: dark),
+                  Text(
+                    current.name,
+                    style: AppType.label.copyWith(
+                      color: MoodPalette.colorOf(current.hue, dark: dark),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
                 const Spacer(),

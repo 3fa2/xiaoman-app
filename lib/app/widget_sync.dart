@@ -136,7 +136,7 @@ class WidgetSync {
     }).catchError((_) {});
   }
 
-  static void _handleAction(WidgetRef ref, String? action) {
+  static Future<void> _handleAction(WidgetRef ref, String? action) async {
     if (action == null) return;
     final ctx = rootKey.currentContext;
     if (ctx == null) return;
@@ -152,14 +152,23 @@ class WidgetSync {
           if (c != null) showTodoAddSheet(c);
         });
       case 'diary':
-        // 写日记提醒/快捷方式：直达编辑器（锁屏时只到日记页，解锁后再操作）
-        ctx.go('/diary');
+        // 写日记提醒/快捷方式：直达编辑器（锁屏时只到日记页，解锁后再操作）；
+        // 今天已有日记 → 只到日记页，不再重复弹编辑器。
+        // 用 go 而非 push：root context 上 push shell 子路由会渲染空白页
         final gate = ref.read(lockGateProvider);
-        if (gate.required && !gate.unlocked) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final c = rootKey.currentContext;
-          if (c != null) c.push('/diary/edit');
-        });
+        if (gate.required && !gate.unlocked) {
+          ctx.go('/diary');
+          return;
+        }
+        final now = DateTime.now();
+        final todayDay = now.year * 10000 + now.month * 100 + now.day;
+        final todays =
+            await ref.read(diaryRepoProvider).watchByDate(todayDay).first;
+        if (todays.isNotEmpty) {
+          ctx.go('/diary');
+          return;
+        }
+        ctx.go('/diary/edit');
       case 'schedule':
         ctx.go('/schedule');
     }

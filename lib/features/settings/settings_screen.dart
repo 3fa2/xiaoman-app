@@ -401,11 +401,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     color: p.onSurfaceVariant,
                   ),
                   title: Text(
-                    '回收站（日记）',
+                    '回收站（日记·备忘）',
                     style: AppType.body.copyWith(color: p.onSurface),
                   ),
                   subtitle: Text(
-                    '删掉的日记保留 30 天，可恢复',
+                    '删掉的内容保留 30 天，可恢复',
                     style: AppType.caption.copyWith(color: p.onSurfaceVariant),
                   ),
                   trailing: const Icon(Icons.chevron_right),
@@ -461,7 +461,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.block),
           Center(
             child: Text(
-              '小满 v5.3.1 · 本地数据，不联网',
+              '小满 v5.4.2 · 本地数据，不联网',
               style: AppType.caption.copyWith(color: p.onSurfaceVariant),
             ),
           ),
@@ -559,6 +559,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     try {
+      // 导入前强制快照当前数据：覆盖不可逆，留一条后悔路
+      try {
+        await ref.read(autoBackupProvider).runNow();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('导入前备份失败，已取消导入：$e')),
+          );
+        }
+        return;
+      }
       final result = await ref.read(backupProvider).importFromJsonFile();
       // 导入覆盖了日程实例：已排闹钟还是旧数据的，必须全量重建
       await ref.read(reminderWarningsProvider.notifier).syncNow();

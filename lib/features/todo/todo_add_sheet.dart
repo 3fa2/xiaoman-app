@@ -57,6 +57,14 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
     return n.year * 10000 + n.month * 100 + n.day;
   }
 
+  /// 循环待办必须有截止日（滚动锚点）：选重复时自动补今天
+  void _setRepeat(String? value) {
+    setState(() {
+      _repeat = value;
+      if (value != null && _dueDay == null) _dueDay = _today();
+    });
+  }
+
   static int _dayOf(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
 
   static int _addDay(int day, int delta) {
@@ -153,7 +161,11 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
               _ChoiceChip(
                 label: '无期限',
                 selected: _dueDay == null,
-                onTap: () => setState(() => _dueDay = null),
+                onTap: () => setState(() {
+                  _dueDay = null;
+                  // 无期限 = 循环没有滚动锚点，同步取消循环（否则保存时被静默丢弃）
+                  _repeat = null;
+                }),
               ),
               _ChoiceChip(
                 label: '今天',
@@ -217,7 +229,7 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
                 _ChoiceChip(
                   label: label,
                   selected: _repeat == value,
-                  onTap: () => setState(() => _repeat = value),
+                  onTap: () => _setRepeat(value),
                 ),
             ],
           ),

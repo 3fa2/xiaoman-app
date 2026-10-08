@@ -87,7 +87,11 @@ abstract interface class NoteRepository implements EditorRepository {
     required bool pinned,
   });
   Future<void> setPinned({required int noteId, required bool pinned});
-  Future<void> deleteNote(int id);
+  Future<void> deleteNote(int id); // 软删除 → 回收站（30 天后启动时自动清理）
+  Future<void> restoreNote(int id); // 从回收站恢复（原笔记本已删则归到第一个本）
+  Future<void> purgeNote(int id); // 彻底删除（回收站用，清单子项一并清）
+  Stream<List<Note>> watchDeletedNotes(); // 回收站列表
+  Future<List<int>> deletedNotesBefore(DateTime cutoff); // 过期待清理的 id
   Future<List<Note>> searchNotes(String query);
   Stream<List<TodoItem>> watchTodos(int noteId);
   Future<void> addTodo({required int noteId, required String text});
@@ -112,6 +116,7 @@ abstract interface class TodoRepository {
     String? repeat,
   });
   Future<void> toggle({required int id, required bool done});
+  Future<int> clearDone(); // 清空全部已完成，返回删除条数
   Future<void> delete(int id);
 }
 

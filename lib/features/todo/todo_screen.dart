@@ -27,6 +27,28 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
   _SortBy _sortBy = _SortBy.created;
   bool _doneExpanded = false;
 
+  static const _sortKey = 'todo_sort';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSort();
+  }
+
+  Future<void> _loadSort() async {
+    final v = await ref.read(settingsRepoProvider).get(_sortKey);
+    if (!mounted || v == null) return;
+    setState(() {
+      _sortBy =
+          v == _SortBy.dueDay.name ? _SortBy.dueDay : _SortBy.created;
+    });
+  }
+
+  Future<void> _setSort(_SortBy v) async {
+    setState(() => _sortBy = v);
+    await ref.read(settingsRepoProvider).set(_sortKey, v.name);
+  }
+
   static int _today() {
     final n = DateTime.now();
     return n.year * 10000 + n.month * 100 + n.day;
@@ -61,7 +83,7 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
           },
         ),
         actions: [
-          PopupMenuButton<_SortBy>(
+          PopupMenuButton<Object>(
             icon: PhosphorIcon(
               PhosphorIconsRegular.dotsThreeVertical,
               size: 22,
@@ -70,7 +92,24 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppRadii.rMd),
             ),
-            onSelected: (v) => setState(() => _sortBy = v),
+            onSelected: (v) async {
+              if (v == 'clear_done') {
+                final ok = await showConfirmSheet(
+                  context,
+                  title: '清空全部已完成？',
+                  message: '所有已完成事项将被删除，找不回来',
+                );
+                if (!ok) return;
+                final count = await ref.read(todoRepoProvider).clearDone();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已清空 $count 条已完成')),
+                  );
+                }
+                return;
+              }
+              await _setSort(v as _SortBy);
+            },
             itemBuilder: (ctx) => [
               PopupMenuItem(
                 value: _SortBy.created,
@@ -101,6 +140,21 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                     ),
                     const SizedBox(width: AppSpacing.s12),
                     Text('按截止日', style: AppType.body.copyWith(color: p.onSurface)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'clear_done',
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIconsRegular.trash,
+                      size: 18,
+                      color: p.error,
+                    ),
+                    const SizedBox(width: AppSpacing.s12),
+                    Text('清空已完成', style: AppType.body.copyWith(color: p.error)),
                   ],
                 ),
               ),
@@ -432,6 +486,26 @@ class _TodoRow extends ConsumerWidget {
                       : null,
                 ),
               ),
+              // 已完成事项：可删除（进行中的不显示，避免误删）
+              if (todo.done)
+                IconButton(
+                  tooltip: '删除',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () async {
+                    final ok = await showConfirmSheet(
+                      context,
+                      title: '删除这条待办？',
+                      message: '已完成事项删除后找不回来',
+                    );
+                    if (!ok) return;
+                    await ref.read(todoRepoProvider).delete(todo.id);
+                  },
+                  icon: PhosphorIcon(
+                    PhosphorIconsRegular.trash,
+                    size: 18,
+                    color: p.onSurfaceVariant,
+                  ),
+                ),
             ],
           ),
         ),

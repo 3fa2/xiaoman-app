@@ -67,7 +67,6 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final diary = ref.read(diaryRepoProvider).getById(widget.diaryId);
     final media = ref
         .read(mediaRepoProvider)
@@ -165,10 +164,7 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                           .where((m) => m.id == d.moodId)
                           .firstOrNull;
                       if (mood == null) return const SizedBox.shrink();
-                      return MoodDot(
-                        color: MoodPalette.colorOf(mood.hue, dark: dark),
-                        label: mood.name,
-                      );
+                      return MoodChip(mood: mood);
                     },
                   ),
                 ],

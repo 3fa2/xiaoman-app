@@ -196,7 +196,9 @@ class _DiaryTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               HighlightText(
-                text: diary.title.isEmpty ? diary.summary : diary.title,
+                text: diary.title.isEmpty
+                    ? (diary.summary.isEmpty ? '心情打卡' : diary.summary)
+                    : diary.title,
                 query: query,
                 style: AppType.headline.copyWith(color: p.onSurface),
                 maxLines: 1,

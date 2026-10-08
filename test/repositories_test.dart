@@ -175,7 +175,7 @@ void main() {
       expect(todos2.first.done, isTrue);
     });
 
-    test('删除笔记本级联删笔记', () async {
+    test('删除笔记本级联：笔记软删除进回收站', () async {
       final repo = NoteRepositoryImpl(db);
       await repo.saveNotebook(id: null, name: 'A', colorIndex: 0);
       final nbs = await repo.watchNotebooks().first;
@@ -186,7 +186,64 @@ void main() {
       await repo.addTodo(noteId: noteId, text: 't1');
       await repo.deleteNotebook(nbs.first.id);
       expect((await repo.watchNotebooks().first), isEmpty);
+      // 列表与搜索不再出现
+      expect((await repo.watchNotes(nbs.first.id).first), isEmpty);
+      expect(await repo.searchNotes('y'), isEmpty);
+      // 但按 id 仍可查（回收站数据源），deletedAt 已标记
+      final n = await repo.getNoteById(noteId);
+      expect(n, isNotNull);
+      expect(n!.deletedAt, isNotNull);
+      expect((await repo.watchDeletedNotes().first).length, 1);
+    });
+
+    test('备忘回收站：恢复（原笔记本已删 → 归到第一个本）/ 彻底删除', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'B1', colorIndex: 0);
+      await repo.saveNotebook(id: null, name: 'B2', colorIndex: 1);
+      final nbs = await repo.watchNotebooks().first;
+      final noteId = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'x', content: 'y',
+        tags: [], pinned: false,
+      );
+      await repo.deleteNote(noteId);
+      expect((await repo.watchNotes(nbs.first.id).first), isEmpty);
+      // 恢复：原笔记本还在 → 原地恢复
+      await repo.restoreNote(noteId);
+      expect((await repo.getNoteById(noteId))!.deletedAt, isNull);
+      expect((await repo.getNoteById(noteId))!.notebookId, nbs.first.id);
+      // 原笔记本删掉后再恢复 → 归到剩下的第一个本
+      await repo.deleteNote(noteId);
+      await repo.deleteNotebook(nbs.first.id);
+      await repo.restoreNote(noteId);
+      final restored = await repo.getNoteById(noteId);
+      expect(restored!.deletedAt, isNull);
+      final nbIds = (await repo.watchNotebooks().first).map((nb) => nb.id);
+      expect(nbIds, contains(restored.notebookId));
+      // 彻底删除：清单子项一并清
+      await repo.deleteNote(noteId);
+      await repo.purgeNote(noteId);
       expect(await repo.getNoteById(noteId), isNull);
+    });
+
+    test('deletedNotesBefore：只返回超过截止时间的已删笔记', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'C', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      final id = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'x', content: 'y',
+        tags: [], pinned: false,
+      );
+      await repo.deleteNote(id);
+      expect(
+        await repo.deletedNotesBefore(
+          DateTime.now().subtract(const Duration(days: 30)),
+        ),
+        isEmpty,
+      );
+      expect(
+        await repo.deletedNotesBefore(DateTime.now().add(const Duration(days: 1))),
+        [id],
+      );
     });
 
     test('FTS5 笔记搜索', () async {
@@ -446,6 +503,15 @@ void main() {
       final id = await repo.add(title: '一次性', dueDay: 20260101);
       await repo.toggle(id: id, done: true);
       expect((await repo.watchAll().first).first.done, isTrue);
+    });
+
+    test('删除已完成待办：列表移除', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '会删掉的', dueDay: 20260101);
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).length, 1);
+      await repo.delete(id);
+      expect((await repo.watchAll().first), isEmpty);
     });
   });
 

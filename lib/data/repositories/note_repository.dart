@@ -22,6 +22,7 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
         pinned: row.pinned,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        deletedAt: row.deletedAt,
       );
 
   Notebook _mapNotebook(NotebookRow row) => Notebook(
@@ -44,7 +45,8 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
     final count = _db.notes.id.count();
     final q = _db.selectOnly(_db.notes)
       ..addColumns([count])
-      ..where(_db.notes.notebookId.equals(notebookId));
+      ..where(_db.notes.notebookId.equals(notebookId) &
+          _db.notes.deletedAt.isNull());
     return q.watchSingle().map((r) => r.read(count) ?? 0);
   }
 
@@ -76,22 +78,18 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
 
   @override
   Future<void> deleteNotebook(int id) async {
-    // 级联删笔记与子项
-    final notes = await (_db.select(_db.notes)
-          ..where((n) => n.notebookId.equals(id)))
-        .get();
-    for (final n in notes) {
-      await (_db.delete(_db.todoItems)..where((t) => t.noteId.equals(n.id)))
-          .go();
-    }
-    await (_db.delete(_db.notes)..where((n) => n.notebookId.equals(id))).go();
+    // 级联：笔记本删除 → 其笔记软删除（进回收站，30 天可恢复），笔记本行硬删
+    final now = DateTime.now();
+    await (_db.update(_db.notes)
+          ..where((n) => n.notebookId.equals(id) & n.deletedAt.isNull()))
+        .write(NotesCompanion(deletedAt: Value(now), updatedAt: Value(now)));
     await (_db.delete(_db.notebooks)..where((n) => n.id.equals(id))).go();
   }
 
   @override
   Stream<List<Note>> watchNotes(int notebookId) {
     final q = _db.select(_db.notes)
-      ..where((n) => n.notebookId.equals(notebookId))
+      ..where((n) => n.notebookId.equals(notebookId) & n.deletedAt.isNull())
       ..orderBy([
         (n) => OrderingTerm.desc(n.pinned),
         (n) => OrderingTerm.desc(n.updatedAt),
@@ -102,7 +100,7 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
   @override
   Stream<List<Note>> watchPinned() {
     final q = _db.select(_db.notes)
-      ..where((n) => n.pinned.equals(true))
+      ..where((n) => n.pinned.equals(true) & n.deletedAt.isNull())
       ..orderBy([(n) => OrderingTerm.desc(n.updatedAt)]);
     return q.watch().map((rows) => rows.map(_map).toList());
   }
@@ -158,8 +156,72 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
 
   @override
   Future<void> deleteNote(int id) async {
+    // 软删除（v8 回收站）：清单子项随笔记一起隐藏，彻底删除时才清
+    await (_db.update(_db.notes)..where((n) => n.id.equals(id))).write(
+      NotesCompanion(
+        deletedAt: Value(DateTime.now()),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  @override
+  Future<void> restoreNote(int id) async {
+    // 恢复：原笔记本可能已删 → 归到第一个笔记本；没有任何笔记本则新建默认本
+    final row = await (_db.select(_db.notes)..where((n) => n.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return;
+    var notebookId = row.notebookId;
+    final nbExists = await (_db.select(_db.notebooks)
+          ..where((nb) => nb.id.equals(notebookId)))
+        .getSingleOrNull();
+    if (nbExists == null) {
+      final first = await (_db.select(_db.notebooks)
+            ..orderBy([(nb) => OrderingTerm.asc(nb.sortOrder)]))
+          .getSingleOrNull();
+      if (first != null) {
+        notebookId = first.id;
+      } else {
+        notebookId = await _db.into(_db.notebooks).insert(
+              NotebooksCompanion.insert(
+                name: '默认笔记本',
+                colorIndex: 0,
+                sortOrder: 0,
+                createdAt: DateTime.now(),
+              ),
+            );
+      }
+    }
+    await (_db.update(_db.notes)..where((n) => n.id.equals(id))).write(
+      NotesCompanion(
+        deletedAt: Value(null),
+        notebookId: Value(notebookId),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  @override
+  Future<void> purgeNote(int id) async {
     await (_db.delete(_db.todoItems)..where((t) => t.noteId.equals(id))).go();
     await (_db.delete(_db.notes)..where((n) => n.id.equals(id))).go();
+  }
+
+  @override
+  Stream<List<Note>> watchDeletedNotes() {
+    final q = _db.select(_db.notes)
+      ..where((n) => n.deletedAt.isNotNull())
+      ..orderBy([(n) => OrderingTerm.desc(n.deletedAt)]);
+    return q.watch().map((rows) => rows.map(_map).toList());
+  }
+
+  @override
+  Future<List<int>> deletedNotesBefore(DateTime cutoff) async {
+    final rows = await (_db.select(_db.notes)
+          ..where((n) =>
+              n.deletedAt.isNotNull() & n.deletedAt.isSmallerThanValue(cutoff)))
+        .get();
+    return rows.map((r) => r.id).toList();
   }
 
   @override

@@ -60,6 +60,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
 
   late final AutosaveController _controller;
 
+  /// 退出流程进行中（防双击完成/系统返回并发触发两次 flush+pop）
+  bool _popping = false;
+
   @override
   void initState() {
     super.initState();
@@ -158,11 +161,18 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
 
   Future<void> _onPopInvoked(bool didPop, _) async {
     if (didPop) return;
+    if (_popping) return; // 并发退出：flush 只跑一次
+    _popping = true;
     await _controller.flush(
       title: _title.text, content: _content.text, extra: _notebookId,
     );
     // pinned/tags 不走 controller，单独补一次（已有 id 才需要）
     await _flushNote();
+    // 保存失败不许走：错误 pill 可见可重试（UI 不撒谎）
+    if (!mounted || _controller.status == SaveStatus.error) {
+      _popping = false;
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -172,10 +182,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
     final noteId = widget.noteId;
 
     return PopScope(
-      // dirty 也不放行：canPop=true 时系统直接 pop（didPop=true），
-      // _onPopInvoked 的早退分支让 flush 永不执行 → 2 秒去抖窗口内的编辑丢失。
-      canPop: _controller.status != SaveStatus.saving &&
-          _controller.status != SaveStatus.dirty,
+      // 恒 false：canPop 表达式在「typing 后重建帧完成前点完成」的微竞态下
+      // 仍是旧值 true 会直弹丢字；由 _onPopInvoked 读 controller 实时状态统一决定。
+      // ⚠️ PopScope 只拦截 maybePop/系统返回；直接 Navigator.pop() 会绕过它。
+      canPop: false,
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(
@@ -194,7 +204,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
                   final ok = await showConfirmSheet(
                     context,
                     title: '删除这条笔记？',
-                    message: '删除后找不回来',
+                    message: '进入回收站，30 天内可恢复',
                   );
                   if (!ok || !mounted) return;
                   await ref.read(noteRepoProvider).deleteNote(noteId);
@@ -206,7 +216,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen>
                 ),
               ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              // maybePop 走 PopScope 判定（canPop:false → flush 后手动 pop）；
+              // Navigator.pop() 直弹会绕过 PopScope 丢字（v5.4.2 同步修复）
+              onPressed: () => Navigator.of(context).maybePop(),
               child: const Text('完成'),
             ),
           ],

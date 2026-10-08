@@ -59,6 +59,9 @@ final autoBackupProvider = Provider<AutoBackupService>(
   ),
 );
 
+/// 日记页视图模式：false=日历 true=时间线列表（首页「全部」直达时间线用）
+final diaryViewModeProvider = StateProvider<bool>((ref) => false);
+
 final notificationServiceProvider = Provider<NotificationService>(
   (ref) => NotificationService.instance,
 );

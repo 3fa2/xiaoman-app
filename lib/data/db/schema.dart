@@ -81,6 +81,7 @@ class Notes extends Table {
   BoolColumn get pinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()(); // v8 回收站：非空=已删
 }
 
 @DataClassName('TodoItemRow')

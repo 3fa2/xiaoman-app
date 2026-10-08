@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -69,6 +69,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 7) {
             await m.addColumn(diaries, diaries.deletedAt);
             await m.addColumn(todos, todos.repeat);
+          }
+          // v7 → v8：备忘回收站（软删除）
+          if (from < 8) {
+            await m.addColumn(notes, notes.deletedAt);
           }
         },
       );
@@ -158,7 +162,7 @@ class AppDatabase extends _$AppDatabase {
       final rows = await customSelect(
         'SELECT d.* FROM diaries d JOIN diaries_fts f ON d.id = f.rowid '
         'WHERE diaries_fts MATCH ? AND d.deleted_at IS NULL '
-        'ORDER BY d.date_day DESC',
+        'ORDER BY d.date_day DESC LIMIT 200',
         variables: [Variable(_ftsQuery(q))],
         readsFrom: {diaries},
       ).map(_rowToDiary).get();
@@ -168,7 +172,7 @@ class AppDatabase extends _$AppDatabase {
     final rows = await customSelect(
       'SELECT * FROM diaries WHERE deleted_at IS NULL '
       'AND (content LIKE ? OR title LIKE ? OR tags LIKE ?) '
-      'ORDER BY date_day DESC',
+      'ORDER BY date_day DESC LIMIT 200',
       variables: [Variable(like), Variable(like), Variable(like)],
       readsFrom: {diaries},
     ).map(_rowToDiary).get();
@@ -181,7 +185,8 @@ class AppDatabase extends _$AppDatabase {
     if (q.length >= 3) {
       final rows = await customSelect(
         'SELECT n.* FROM notes n JOIN notes_fts f ON n.id = f.rowid '
-        'WHERE notes_fts MATCH ? ORDER BY n.updated_at DESC',
+        'WHERE notes_fts MATCH ? AND n.deleted_at IS NULL '
+        'ORDER BY n.updated_at DESC LIMIT 200',
         variables: [Variable(_ftsQuery(q))],
         readsFrom: {notes},
       ).map(_rowToNote).get();
@@ -189,8 +194,9 @@ class AppDatabase extends _$AppDatabase {
     }
     final like = '%$q%';
     final rows = await customSelect(
-      'SELECT * FROM notes WHERE content LIKE ? OR title LIKE ? OR tags LIKE ? '
-      'ORDER BY updated_at DESC',
+      'SELECT * FROM notes WHERE deleted_at IS NULL '
+      'AND (content LIKE ? OR title LIKE ? OR tags LIKE ?) '
+      'ORDER BY updated_at DESC LIMIT 200',
       variables: [Variable(like), Variable(like), Variable(like)],
       readsFrom: {notes},
     ).map(_rowToNote).get();

@@ -25,7 +25,6 @@ class DiaryCalendarScreen extends ConsumerStatefulWidget {
 class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
   DateTime _focused = DateTime.now();
   int _selectedDay = _dayOf(DateTime.now());
-  bool _listMode = false; // v5.3：日历 / 时间线列表双模式
 
   /// 当前日记本过滤：null = 所有日记，-1 = 未归本，>0 = 具体本
   int? _notebookFilter;
@@ -37,6 +36,7 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
+    final listMode = ref.watch(diaryViewModeProvider);
     final month = _focused.year * 100 + _focused.month;
     final diaries =
         ref.watch(diaryRepoProvider).watchByMonthIn(month, _notebookFilter);
@@ -50,10 +50,11 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
         actions: [
           // 日历/时间线切换
           IconButton(
-            onPressed: () => setState(() => _listMode = !_listMode),
-            tooltip: _listMode ? '日历视图' : '时间线视图',
+            onPressed: () => ref.read(diaryViewModeProvider.notifier).state =
+                !listMode,
+            tooltip: listMode ? '日历视图' : '时间线视图',
             icon: PhosphorIcon(
-              _listMode
+              listMode
                   ? PhosphorIconsRegular.calendarBlank
                   : PhosphorIconsRegular.listDashes,
               color: p.onSurfaceVariant,
@@ -86,11 +87,18 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
       floatingActionButton: AppFab(
         icon: PhosphorIconsRegular.notePencil,
         tooltip: '写日记',
-        // 写选中的那天（选了过去某天即补记）
-        onPressed: () =>
-            context.openDiaryEditor(null, _notebookFilter, _selectedDay),
+        // 日历模式写选中的那天（选了过去某天即补记）；时间线模式写今天
+        onPressed: () {
+          final n = DateTime.now();
+          final today = n.year * 10000 + n.month * 100 + n.day;
+          context.openDiaryEditor(
+            null,
+            _notebookFilter,
+            listMode ? today : _selectedDay,
+          );
+        },
       ),
-      body: _listMode
+      body: listMode
           ? _buildTimeline(p, dark)
           : Column(
         children: [
@@ -530,7 +538,6 @@ class _DiaryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final p = Theme.of(context).colorScheme;
     // 缩略图可能为 null（视频无 thumb 且无 cover），用守卫占位框代替 File(null) 崩溃
     return Card(
@@ -580,10 +587,7 @@ class _DiaryCard extends ConsumerWidget {
                             ),
                             if (mood != null) ...[
                               const SizedBox(width: AppSpacing.s8),
-                              MoodDot(
-                                color: MoodPalette.colorOf(mood!.hue, dark: dark),
-                                label: mood!.name,
-                              ),
+                              MoodChip(mood: mood!),
                             ],
                           ],
                         ),

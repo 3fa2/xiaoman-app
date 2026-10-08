@@ -103,10 +103,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                     ),
                   ),
                   GoRoute(
-                    path: 'trash',
-                    builder: (c, s) => const DiaryRecycleBinScreen(),
-                  ),
-                  GoRoute(
                     path: 'trend',
                     builder: (c, s) => const MoodTrendScreen(),
                   ),
@@ -151,6 +147,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      // 回收站：root 级路由（与 /settings 同级）。放 shell 分支内时，
+      // 从 shell 外（设置页）push 会渲染出空白页（go_router 已知行为）
+      GoRoute(
+        path: '/trash',
+        builder: (c, s) => const DiaryRecycleBinScreen(),
       ),
       // 日程：v5.0 起从底部 tab 摘除，作为顶层页面由设置页/首页入口进入，功能与数据全保留
       GoRoute(
@@ -206,7 +208,7 @@ extension AppNav on BuildContext {
   }
   void openDiaryDetail(int id) => push('/diary/detail/$id');
   void openDiarySearch() => push('/diary/search');
-  void openDiaryTrash() => push('/diary/trash');
+  void openDiaryTrash() => push('/trash');
   void openMoodTrend() => push('/diary/trend');
   void openNoteList(int notebookId) => push('/notes/list/$notebookId');
   void openNoteSearch() => push('/notes/search');
