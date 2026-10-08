@@ -18,7 +18,7 @@ class TodoScreen extends ConsumerStatefulWidget {
   ConsumerState<TodoScreen> createState() => _TodoScreenState();
 }
 
-enum _Filter { all, active, overdue, today, week, done }
+enum _Filter { all, active, overdue }
 
 enum _SortBy { created, dueDay }
 
@@ -185,20 +185,11 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
             );
           }
           final today = _today();
-          final now = DateTime.now();
-          final weekEndDt = DateTime(now.year, now.month, now.day)
-              .add(const Duration(days: 7));
-          final weekEndNum =
-              weekEndDt.year * 10000 + weekEndDt.month * 100 + weekEndDt.day;
           bool matches(Todo t) => switch (_filter) {
                 _Filter.all => true,
                 _Filter.active => !t.done,
                 _Filter.overdue =>
                   !t.done && t.dueDay != null && t.dueDay! < today,
-                _Filter.today => t.dueDay == today,
-                _Filter.week =>
-                  t.dueDay != null && t.dueDay! >= today && t.dueDay! <= weekEndNum,
-                _Filter.done => t.done,
               };
           var active = all.where((t) => !t.done && matches(t)).toList();
           var done = all.where((t) => t.done && matches(t)).toList();
@@ -215,34 +206,39 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
           active.sort(_sortBy == _SortBy.dueDay ? byDue : byCreated);
           done.sort(byCreated);
           final total = all.length;
+          // 各筛选的准确计数：全部=含已完成总数；进行中/已过期只算未完成
+          final activeCount = all.where((t) => !t.done).length;
+          final overdueCount = all
+              .where((t) => !t.done && t.dueDay != null && t.dueDay! < today)
+              .length;
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(
               0, AppSpacing.s8, 0, AppSpacing.listBottom,
             ),
             children: [
-              // 筛选条
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+              // 筛选条（v5.4.3：收敛为 3 档，每档显示准确计数）
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
                 child: Row(
                   children: [
-                    for (final (f, label) in const <(_Filter, String)>[
-                      (_Filter.all, '全部'),
-                      (_Filter.active, '进行中'),
-                      (_Filter.overdue, '已过期'),
-                      (_Filter.today, '今天'),
-                      (_Filter.week, '最近 7'),
-                      (_Filter.done, '已完成'),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(right: AppSpacing.s8),
-                        child: _FilterChip(
-                          label: '$label${f == _Filter.all ? ' $total' : ''}',
-                          selected: _filter == f,
-                          onTap: () => setState(() => _filter = f),
-                        ),
-                      ),
+                    _FilterChip(
+                      label: '全部 $total',
+                      selected: _filter == _Filter.all,
+                      onTap: () => setState(() => _filter = _Filter.all),
+                    ),
+                    const SizedBox(width: AppSpacing.s8),
+                    _FilterChip(
+                      label: '进行中 $activeCount',
+                      selected: _filter == _Filter.active,
+                      onTap: () => setState(() => _filter = _Filter.active),
+                    ),
+                    const SizedBox(width: AppSpacing.s8),
+                    _FilterChip(
+                      label: '已过期 $overdueCount',
+                      selected: _filter == _Filter.overdue,
+                      onTap: () => setState(() => _filter = _Filter.overdue),
+                    ),
                   ],
                 ),
               ),
