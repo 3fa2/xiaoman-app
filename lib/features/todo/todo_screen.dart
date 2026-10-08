@@ -18,7 +18,7 @@ class TodoScreen extends ConsumerStatefulWidget {
   ConsumerState<TodoScreen> createState() => _TodoScreenState();
 }
 
-enum _Filter { all, active, overdue }
+enum _Filter { all, active, done }
 
 enum _SortBy { created, dueDay }
 
@@ -47,11 +47,6 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
   Future<void> _setSort(_SortBy v) async {
     setState(() => _sortBy = v);
     await ref.read(settingsRepoProvider).set(_sortKey, v.name);
-  }
-
-  static int _today() {
-    final n = DateTime.now();
-    return n.year * 10000 + n.month * 100 + n.day;
   }
 
   @override
@@ -184,12 +179,10 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
               hint: '点右下角加一个，或从桌面小组件直接记',
             );
           }
-          final today = _today();
           bool matches(Todo t) => switch (_filter) {
                 _Filter.all => true,
                 _Filter.active => !t.done,
-                _Filter.overdue =>
-                  !t.done && t.dueDay != null && t.dueDay! < today,
+                _Filter.done => t.done,
               };
           var active = all.where((t) => !t.done && matches(t)).toList();
           var done = all.where((t) => t.done && matches(t)).toList();
@@ -206,11 +199,9 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
           active.sort(_sortBy == _SortBy.dueDay ? byDue : byCreated);
           done.sort(byCreated);
           final total = all.length;
-          // 各筛选的准确计数：全部=含已完成总数；进行中/已过期只算未完成
+          // 各筛选的准确计数：全部=含已完成总数；进行中/已完成独立计数
           final activeCount = all.where((t) => !t.done).length;
-          final overdueCount = all
-              .where((t) => !t.done && t.dueDay != null && t.dueDay! < today)
-              .length;
+          final doneCount = all.where((t) => t.done).length;
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -235,9 +226,9 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
                     ),
                     const SizedBox(width: AppSpacing.s8),
                     _FilterChip(
-                      label: '已过期 $overdueCount',
-                      selected: _filter == _Filter.overdue,
-                      onTap: () => setState(() => _filter = _Filter.overdue),
+                      label: '已完成 $doneCount',
+                      selected: _filter == _Filter.done,
+                      onTap: () => setState(() => _filter = _Filter.done),
                     ),
                   ],
                 ),
