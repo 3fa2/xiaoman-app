@@ -7,6 +7,8 @@ import '../features/diary/diary_detail_screen.dart';
 import '../features/diary/diary_editor_screen.dart';
 import '../features/diary/diary_recycle_bin_screen.dart';
 import '../features/diary/diary_search_screen.dart';
+import '../features/diary/diary_share_card_screen.dart';
+import '../features/diary/diary_stats_screen.dart';
 import '../features/diary/mood_trend_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/notes/note_editor_screen.dart';
@@ -48,10 +50,14 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootKey,
     initialLocation: '/home',
     redirect: (context, state) {
-      // 锁屏 hash 尚未加载完：放行，加载完由 router.refresh() 触发重定向
-      if (!gate.loaded) return null;
+      // 锁屏 hash 尚未加载完：先停在无数据的启动占位页，加载完由
+      // router.refresh() 触发重定向。此前直接放行会让 /home 先渲染真实
+      // 数据帧——设了 PIN 的用户冷启动存在内容被瞥见的竞态窗口。
+      final atSplash = state.matchedLocation == '/splash';
+      if (!gate.loaded) return atSplash ? null : '/splash';
       final locked = gate.required && !gate.unlocked;
       final atLock = state.matchedLocation == '/lock';
+      if (atSplash) return locked ? '/lock' : '/home';
       if (locked && !atLock) return '/lock';
       if (!locked && atLock) return '/home';
       return null;
@@ -105,6 +111,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'trend',
                     builder: (c, s) => const MoodTrendScreen(),
+                  ),
+                  GoRoute(
+                    path: 'stats',
+                    builder: (c, s) => const DiaryStatsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'card/:id',
+                    builder: (c, s) => DiaryShareCardScreen(
+                      diaryId: int.parse(s.pathParameters['id']!),
+                    ),
                   ),
                 ],
               ),
@@ -187,9 +203,34 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/settings', builder: (c, s) => const SettingsScreen()),
       GoRoute(path: '/lock', builder: (c, s) => const LockScreen()),
+      GoRoute(
+        path: '/splash',
+        builder: (c, s) => const _SplashScreen(),
+      ),
     ],
   );
 });
+
+/// 启动占位页：锁屏 hash 加载完成前的无数据画面（防冷启动闪现真实内容）。
+/// 不订阅任何数据流；加载完成后 redirect 会立即送走。
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: p.surface,
+      body: Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2, color: p.outlineVariant),
+        ),
+      ),
+    );
+  }
+}
 
 /// 供页面跳转用的小助手（统一命名，避免裸字符串散落）
 extension AppNav on BuildContext {
@@ -210,6 +251,8 @@ extension AppNav on BuildContext {
   void openDiarySearch() => push('/diary/search');
   void openDiaryTrash() => push('/trash');
   void openMoodTrend() => push('/diary/trend');
+  void openDiaryStats() => push('/diary/stats');
+  void openDiaryShareCard(int id) => push('/diary/card/$id');
   void openNoteList(int notebookId) => push('/notes/list/$notebookId');
   void openNoteSearch() => push('/notes/search');
   void openNoteEditor({int? noteId, int? notebookId}) {

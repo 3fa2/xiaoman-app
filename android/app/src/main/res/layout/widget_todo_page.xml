@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 待办小组件 ViewFlipper 单页容器（v5.8）：竖排最多 3 行 widget_todo_row，
+     行由 Provider 以嵌套 RemoteViews addView 进来。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_page"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical" />

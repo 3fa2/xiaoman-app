@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -144,11 +146,13 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            PhosphorIcon(
-              icon,
-              size: 44,
-              color: p.outline,
-              weight: 1.5,
+            Pulse(
+              child: PhosphorIcon(
+                icon,
+                size: 44,
+                color: p.outline,
+                weight: 1.5,
+              ),
             ),
             const SizedBox(height: AppSpacing.s16),
             Text(
@@ -362,7 +366,7 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// 保存状态 pill（P0-1：UI 只反映真实状态，绝不撒谎）
-class SaveStatusPill extends StatelessWidget {
+class SaveStatusPill extends StatefulWidget {
   const SaveStatusPill({
     super.key,
     required this.status,
@@ -376,10 +380,34 @@ class SaveStatusPill extends StatelessWidget {
   final Object? error;
   final VoidCallback onRetry;
 
+  @override
+  State<SaveStatusPill> createState() => _SaveStatusPillState();
+}
+
+class _SaveStatusPillState extends State<SaveStatusPill> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // 「X 分钟前」随时间推进：停留页面时不再永远显示「刚刚」
+    _tick = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && widget.status == SaveStatusUi.saved) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
   String get _text {
-    switch (status) {
+    switch (widget.status) {
       case SaveStatusUi.saved:
-        final t = lastSavedAt;
+        final t = widget.lastSavedAt;
         if (t == null) return '已保存';
         final diff = DateTime.now().difference(t);
         final rel = diff.inMinutes < 1 ? '刚刚' : '${diff.inMinutes} 分钟前';
@@ -397,15 +425,34 @@ class SaveStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (status == SaveStatusUi.idle) return const SizedBox.shrink();
+    if (widget.status == SaveStatusUi.idle) return const SizedBox.shrink();
     final p = Theme.of(context).colorScheme;
-    final isError = status == SaveStatusUi.error;
-    return GestureDetector(
-      onTap: isError ? onRetry : null,
-      child: Text(
-        _text,
-        style: AppType.caption.copyWith(
-          color: isError ? p.error : p.onSurfaceVariant,
+    final isError = widget.status == SaveStatusUi.error;
+    return AnimatedSwitcher(
+      duration: MotionDuration.fast,
+      switchInCurve: MotionCurve.standard,
+      switchOutCurve: MotionCurve.standard,
+      transitionBuilder: (child, anim) {
+        final isIn = child.key == ValueKey(widget.status);
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: anim.drive(Tween(
+              begin: Offset(0, isIn ? 0.5 : -0.5),
+              end: Offset.zero,
+            )),
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        key: ValueKey(widget.status),
+        onTap: isError ? widget.onRetry : null,
+        child: Text(
+          _text,
+          style: AppType.caption.copyWith(
+            color: isError ? p.error : p.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -413,6 +460,268 @@ class SaveStatusPill extends StatelessWidget {
 }
 
 enum SaveStatusUi { idle, dirty, saving, saved, error }
+
+/// 滚动计数器（Odometer/Ticker）：数值变化时逐位垂直滚动到新值。
+/// 用于与图表刷选、Bento 计数等需要「数字平滑联动」的场景。
+class RollingCounter extends StatelessWidget {
+  const RollingCounter({
+    super.key,
+    required this.value,
+    this.style,
+    this.duration = const Duration(milliseconds: 450),
+  });
+
+  final int value;
+  final TextStyle? style;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (style ?? const TextStyle(fontSize: 34, height: 1.15));
+    // 减弱动态：数字直接显示，不逐位滚动
+    if (isReduceMotion(context)) {
+      return Text(value.toString(), style: s);
+    }
+    final fontSize = s.fontSize ?? 34;
+    final digitW = fontSize * 0.62;
+    final digitH = fontSize * (s.height ?? 1.15) * 1.08;
+    final chars = value.toString().split('');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < chars.length; i++)
+          ClipRect(
+            child: SizedBox(
+              width: digitW,
+              height: digitH,
+              child: AnimatedSwitcher(
+                duration: duration,
+                switchInCurve: MotionCurve.standard,
+                switchOutCurve: MotionCurve.standard,
+                transitionBuilder: (child, anim) {
+                  final isIn = child.key == ValueKey(chars[i]);
+                  return SlideTransition(
+                    position: anim.drive(Tween(
+                      begin: Offset(0, isIn ? 1 : -1),
+                      end: Offset.zero,
+                    )),
+                    child: child,
+                  );
+                },
+                child: Text(
+                  chars[i],
+                  key: ValueKey(chars[i]),
+                  textAlign: TextAlign.center,
+                  style: s,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 首次构建入场：缩放 + 淡入（详情页正文等「背景内容」跟随 Hero 容器入场）
+class ScaleFadeIn extends StatelessWidget {
+  const ScaleFadeIn({
+    super.key,
+    required this.child,
+    this.begin = 0.97,
+    this.duration = const Duration(milliseconds: 360),
+  });
+
+  final Widget child;
+  final double begin;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    // 减弱动态：直接显示，不播缩放入场
+    if (isReduceMotion(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: MotionCurve.standard,
+      child: child,
+      builder: (context, v, child) => Opacity(
+        opacity: v.clamp(0, 1),
+        child: Transform.scale(scale: begin + (1 - begin) * v, child: child),
+      ),
+    );
+  }
+}
+
+/// 延迟弹入（elasticOut）：小元素（心情点/图标/徽标）的入场，index 级联
+class PopIn extends StatefulWidget {
+  const PopIn({
+    super.key,
+    required this.child,
+    this.index = 0,
+    this.delay = const Duration(milliseconds: 50),
+  });
+
+  final Widget child;
+  final int index;
+  final Duration delay;
+
+  @override
+  State<PopIn> createState() => _PopInState();
+}
+
+class _PopInState extends State<PopIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+  late final Animation<double> _anim = CurvedAnimation(
+    parent: _c,
+    curve: Curves.elasticOut,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(widget.delay * widget.index.clamp(0, 12), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 减弱动态：直接显示，不弹跳
+    if (isReduceMotion(context)) return widget.child;
+    return ScaleTransition(scale: _anim, child: widget.child);
+  }
+}
+
+/// 呼吸脉冲：空态图标的轻微循环缩放，给静止页面一点生命感
+class Pulse extends StatefulWidget {
+  const Pulse({super.key, required this.child, this.max = 1.05});
+
+  final Widget child;
+  final double max;
+
+  @override
+  State<Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+    lowerBound: 0.97,
+    upperBound: widget.max,
+  );
+
+  bool _repeating = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 减弱动态时停掉 repeat：否则 ticker 永不停止地空转
+    final reduce = isReduceMotion(context);
+    if (!reduce && !_repeating) {
+      _repeating = true;
+      _c.repeat(reverse: true);
+    } else if (reduce && _repeating) {
+      _repeating = false;
+      _c
+        ..stop()
+        ..value = 1.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isReduceMotion(context)) return widget.child;
+    return ScaleTransition(scale: _c, child: widget.child);
+  }
+}
+
+/// 撒花：待办全部完成等庆祝时刻的一次性粒子爆发（纯 CustomPaint，零依赖）。
+/// 粒子轨迹由 index 确定性生成，重建安全。调色板走 design 层 ConfettiPalette。
+class ConfettiBurst extends StatefulWidget {
+  const ConfettiBurst({super.key, this.size = 140, this.count = 18});
+
+  final double size;
+  final int count;
+
+  @override
+  State<ConfettiBurst> createState() => _ConfettiBurstState();
+}
+
+class _ConfettiBurstState extends State<ConfettiBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isReduceMotion(context)) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) => CustomPaint(
+        size: Size.square(widget.size),
+        painter: _ConfettiPainter(progress: _c.value, count: widget.count),
+      ),
+    );
+  }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  const _ConfettiPainter({required this.progress, required this.count});
+
+  final double progress;
+  final int count;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress >= 1) return;
+    final center = Offset(size.width / 2, size.height * 0.42);
+    final maxDist = size.width * 0.46;
+    final paint = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < count; i++) {
+      final frac = i / count;
+      final angle = frac * 2 * math.pi + 0.6;
+      final speed = 0.55 + (i % 4) * 0.15;
+      final dist = maxDist * speed * (1 - math.pow(1 - progress, 2).toDouble());
+      final gravity = progress * progress * size.width * 0.22;
+      final pos = center +
+          Offset(math.cos(angle) * dist, math.sin(angle) * dist + gravity);
+      final fade = (1 - progress).clamp(0, 1);
+      paint.color = ConfettiPalette.colors[i % ConfettiPalette.colors.length]
+          .withAlpha((fade * 255).round());
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy);
+      canvas.rotate(angle + progress * 6);
+      final r = 3.2 * (1 - progress * 0.5);
+      canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: r * 1.7, height: r), paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => old.progress != progress;
+}
 
 /// 心情小圆点 + 文字（列表里心情只用小圆点，不整行染色）
 class MoodDot extends StatelessWidget {
@@ -551,27 +860,57 @@ class HighlightText extends StatelessWidget {
 /// 页面自管 player 生命周期；转场 fade + scale（0.85→1）。
 /// ============================================================
 
-Future<void> showFullscreenImage(BuildContext context, String path) {
+/// 全屏图片按屏幕物理像素宽解码：vivo 主摄原图 1200 万像素级
+/// （bitmap 50MB+），全尺寸同步解码是打开/关闭卡顿的根因；
+/// 解到显示分辨率（≈1x 屏宽）后内存降至 1/3~1/2，转场全程不掉帧。
+/// InteractiveViewer 放大 1.5x 内仍接近全清晰，预览场景足够。
+int fullscreenImageDecodeWidth(BuildContext context) {
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+  // 1.5x 折衷：放大仍有余量，解码量可控；封顶 4096 防 4K 屏极端值
+  return (MediaQuery.sizeOf(context).width * dpr * 1.5)
+      .round()
+      .clamp(720, 4096);
+}
+
+/// 预解码条目（与 Image.file(cacheWidth:) 同一 cache key，预热直接命中）
+ResizeImage fullscreenImageProvider(String path, int decodeWidth) =>
+    ResizeImage(FileImage(File(path)), width: decodeWidth, allowUpscaling: false);
+
+Future<void> showFullscreenImage(
+  BuildContext context,
+  String path, {
+  String? heroTag,
+}) {
+  // push 前就开始解码（与 300ms 转场并行）：Hero 飞行显示的是目的路由的
+  // 图片 widget，不解码完就是黑框→突现的卡顿感；预热与显示同 key 直接命中
+  unawaited(precacheImage(
+    fullscreenImageProvider(path, fullscreenImageDecodeWidth(context)),
+    context,
+  ));
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
       opaque: false,
       barrierColor: Colors.black,
       transitionDuration: MotionDuration.base,
-      reverseTransitionDuration: MotionDuration.fast,
-      pageBuilder: (_, __, ___) => _FullscreenImagePage(path: path),
+      // 关闭动画给足时长：Hero 飞回缩略图的过程要看得见
+      reverseTransitionDuration: MotionDuration.base,
+      pageBuilder: (_, __, ___) =>
+          _FullscreenImagePage(path: path, heroTag: heroTag),
       transitionsBuilder: (_, animation, __, child) {
         final curved = CurvedAnimation(
           parent: animation,
           curve: MotionCurve.standard,
           reverseCurve: MotionCurve.standard,
         );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween(begin: 0.88, end: 1.0).animate(curved),
-            child: child,
-          ),
-        );
+        final fade = FadeTransition(opacity: curved, child: child);
+        // 带 Hero 时：图片由 Hero 飞行负责，页面只做黑幕淡入淡出
+        //（避免页面级缩放和图片飞行叠加显得抖）；无 Hero 时保留缩放入场
+        return heroTag == null
+            ? ScaleTransition(
+                scale: Tween(begin: 0.88, end: 1.0).animate(curved),
+                child: fade,
+              )
+            : fade;
       },
     ),
   );
@@ -613,24 +952,39 @@ Future<void> showFullscreenVideo(
 }
 
 class _FullscreenImagePage extends StatefulWidget {
-  const _FullscreenImagePage({required this.path});
+  const _FullscreenImagePage({required this.path, this.heroTag});
 
   final String path;
+  final String? heroTag;
 
   @override
   State<_FullscreenImagePage> createState() => _FullscreenImagePageState();
 }
 
 class _FullscreenImagePageState extends State<_FullscreenImagePage> {
+  late final int _decodeWidth = fullscreenImageDecodeWidth(context);
+
   @override
   void initState() {
     super.initState();
-    // 预解码：转场过程中图片已就绪，不黑闪
-    precacheImage(FileImage(File(widget.path)), context);
+    // 预解码（按屏幕像素，非全尺寸）：转场中图片已就绪，不黑闪。
+    // 与 showFullscreenImage 入口的预热同 key，二次命中零成本。
+    precacheImage(
+      fullscreenImageProvider(widget.path, _decodeWidth),
+      context,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final image = Image.file(
+      File(widget.path),
+      fit: BoxFit.contain,
+      cacheWidth: _decodeWidth,
+      // Hero 从缩略图树切到全屏树时不闪白重载
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => const _PreviewUnavailable(),
+    );
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
@@ -638,11 +992,9 @@ class _FullscreenImagePageState extends State<_FullscreenImagePage> {
         child: InteractiveViewer(
           maxScale: 4,
           child: Center(
-            child: Image.file(
-              File(widget.path),
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const _PreviewUnavailable(),
-            ),
+            child: widget.heroTag == null
+                ? image
+                : Hero(tag: widget.heroTag!, child: image),
           ),
         ),
       ),
@@ -670,7 +1022,14 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
   void initState() {
     super.initState();
     if (widget.coverPath != null) {
-      precacheImage(FileImage(File(widget.coverPath!)), context);
+      // 封面按屏幕像素解码（非全尺寸）：转场期解码掉帧与图片页同根因
+      precacheImage(
+        fullscreenImageProvider(
+          widget.coverPath!,
+          fullscreenImageDecodeWidth(context),
+        ),
+        context,
+      );
     }
     _init();
   }
@@ -714,6 +1073,9 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
                       ? Image.file(
                           File(widget.coverPath!),
                           fit: BoxFit.contain,
+                          cacheWidth:
+                              fullscreenImageDecodeWidth(context),
+                          gaplessPlayback: true,
                         )
                       : const CircularProgressIndicator(
                           color: Colors.white54,

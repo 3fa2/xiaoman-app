@@ -25,6 +25,74 @@ class DiaryDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
+  /// 阅读字号（v5.8.1）：0.9 / 1.0 / 1.15 三档，settings 持久化
+  static const _fontKey = 'diary_reader_font';
+  double _fontScale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFontScale();
+  }
+
+  Future<void> _loadFontScale() async {
+    final v =
+        double.tryParse(await ref.read(settingsRepoProvider).get(_fontKey) ?? '');
+    if (v != null && v != _fontScale && mounted) {
+      setState(() => _fontScale = v);
+    }
+  }
+
+  Future<void> _pickFontScale() async {
+    final chosen = await showModalBottomSheet<double>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.s12),
+              child: Text(
+                '正文字号',
+                style: AppType.label.copyWith(
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            for (final (label, scale) in const <(String, double)>[
+              ('小', 0.9),
+              ('标准', 1.0),
+              ('大', 1.15),
+            ])
+              ListTile(
+                title: Text(
+                  label,
+                  style: AppType.bodyLoose.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurface,
+                    fontSize: AppType.bodyLoose.fontSize! * scale,
+                  ),
+                ),
+                trailing: scale == _fontScale
+                    ? PhosphorIcon(
+                        PhosphorIconsFill.check,
+                        size: 18,
+                        color: Theme.of(ctx).colorScheme.primary,
+                      )
+                    : null,
+                onTap: () => Navigator.pop(ctx, scale),
+              ),
+            const SizedBox(height: AppSpacing.s8),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || chosen == _fontScale) return;
+    setState(() => _fontScale = chosen);
+    await ref
+        .read(settingsRepoProvider)
+        .set(_fontKey, chosen.toString());
+  }
+
   /// 播放视频/实况：文件缺失回退全屏图片；
   /// controller 由预览页自管（侧滑返回走标准转场，不再黑屏）。
   Future<void> _play(MediaItem item) async {
@@ -77,6 +145,22 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
       appBar: AppBar(
         actions: [
           IconButton(
+            tooltip: '正文字号',
+            onPressed: _pickFontScale,
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.textAa,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+          IconButton(
+            tooltip: '分享卡片',
+            onPressed: () => context.openDiaryShareCard(widget.diaryId),
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.shareNetwork,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+          IconButton(
             onPressed: () => context.openDiaryEditor(widget.diaryId),
             icon: PhosphorIcon(
               PhosphorIconsRegular.pencilSimple,
@@ -106,8 +190,11 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
         future: diary,
         builder: (context, snap) {
           final d = snap.data;
-          // null（日记不存在/已删）给空态兜底，不能永远停在骨架屏
-          if (snap.connectionState != ConnectionState.done) {
+          // null（日记不存在/已删）给空态兜底，不能永远停在骨架屏。
+          // 用 data 判空而非 ConnectionState：build 里每次重建都新建
+          // future，重订阅瞬间 connectionState 归 none 会把已有内容
+          // 顶替成骨架屏闪一帧
+          if (d == null && snap.connectionState != ConnectionState.done) {
             return const SkeletonList(itemCount: 2);
           }
           if (d == null) {
@@ -122,52 +209,71 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
               AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
             ),
             children: [
-              // 无标题：用日期作头部，不再显示「无题」
+              // 头部容器：与列表卡片 Hero 配对（dc-$id），
+              // 卡片→详情做容器连续缩放（背景色/圆角/内容一起飞）
               Hero(
-                tag: 'diary-cover-${d.id}',
+                tag: 'dc-${d.id}',
                 child: Material(
-                  color: Colors.transparent,
-                  child: Text(
-                    d.title.isEmpty
-                        ? DateFormat('M月d日 EEEE', 'zh_CN').format(
-                            DateTime(
-                              d.dateDay ~/ 10000,
-                              (d.dateDay ~/ 100) % 100,
-                              d.dateDay % 100,
+                  color: p.surface,
+                  elevation: 0,
+                  borderRadius: BorderRadius.circular(AppRadii.rLg),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.cardPad),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadii.rLg),
+                      border: Border.all(color: p.outlineVariant),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 无标题：用日期作头部，不再显示「无题」
+                        Text(
+                          d.title.isEmpty
+                              ? DateFormat('M月d日 EEEE', 'zh_CN').format(
+                                  DateTime(
+                                    d.dateDay ~/ 10000,
+                                    (d.dateDay ~/ 100) % 100,
+                                    d.dateDay % 100,
+                                  ),
+                                )
+                              : d.title,
+                          style: AppType.display.copyWith(color: p.onSurface),
+                        ),
+                        const SizedBox(height: AppSpacing.s8),
+                        Row(
+                          children: [
+                            // 有标题才显示日期行（无标题时日期已在头部）
+                            if (d.title.isNotEmpty)
+                              Text(
+                                DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(
+                                  DateTime(
+                                    d.dateDay ~/ 10000,
+                                    (d.dateDay ~/ 100) % 100,
+                                    d.dateDay % 100,
+                                  ),
+                                ),
+                                style: AppType.caption.copyWith(
+                                  color: p.onSurfaceVariant,
+                                ),
+                              ),
+                            const Spacer(),
+                            FutureBuilder<List<Mood>>(
+                              future: moodsFuture,
+                              builder: (context, moodSnap) {
+                                final mood = (moodSnap.data ?? const <Mood>[])
+                                    .where((m) => m.id == d.moodId)
+                                    .firstOrNull;
+                                if (mood == null) return const SizedBox.shrink();
+                                return MoodChip(mood: mood);
+                              },
                             ),
-                          )
-                        : d.title,
-                    style: AppType.display.copyWith(color: p.onSurface),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.s8),
-              Row(
-                children: [
-                  // 有标题才显示日期行（无标题时日期已在头部）
-                  if (d.title.isNotEmpty)
-                    Text(
-                      DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(
-                        DateTime(
-                          d.dateDay ~/ 10000,
-                          (d.dateDay ~/ 100) % 100,
-                          d.dateDay % 100,
-                        ),
-                      ),
-                      style: AppType.caption.copyWith(color: p.onSurfaceVariant),
-                    ),
-                  const Spacer(),
-                  FutureBuilder<List<Mood>>(
-                    future: moodsFuture,
-                    builder: (context, moodSnap) {
-                      final mood = (moodSnap.data ?? const <Mood>[])
-                          .where((m) => m.id == d.moodId)
-                          .firstOrNull;
-                      if (mood == null) return const SizedBox.shrink();
-                      return MoodChip(mood: mood);
-                    },
-                  ),
-                ],
               ),
               const SizedBox(height: AppSpacing.s16),
               if (d.tags.isNotEmpty)
@@ -203,9 +309,16 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                   ),
                 ),
               if (d.content.isNotEmpty)
-                Text(
-                  d.content,
-                  style: AppType.bodyLoose.copyWith(color: p.onSurface),
+                ScaleFadeIn(
+                  child: Text(
+                    d.content,
+                    // 只缩 fontSize：height 是 fontSize 的相对倍数，
+                    // 两个都乘会平方级放大行距（大档多松 15%）
+                    style: AppType.bodyLoose.copyWith(
+                      color: p.onSurface,
+                      fontSize: AppType.bodyLoose.fontSize! * _fontScale,
+                    ),
+                  ),
                 ),
               const SizedBox(height: AppSpacing.s16),
               FutureBuilder<List<MediaItem>>(
@@ -216,7 +329,8 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                   final hasLive = items.any(
                     (m) => m.kind == MediaKind.livePhoto,
                   );
-                  return Column(
+                  return ScaleFadeIn(
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Wrap(
@@ -228,7 +342,8 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                               onTap: m.kind == MediaKind.image
                                   ? (m.coverPath != null
                                       ? () => showFullscreenImage(
-                                          context, m.coverPath!)
+                                          context, m.coverPath!,
+                                          heroTag: 'media-${m.id}')
                                       : null)
                                   : () => _play(m),
                               onLongPress: m.kind == MediaKind.image
@@ -239,7 +354,10 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                                   ClipRRect(
                                     borderRadius:
                                         BorderRadius.circular(AppRadii.rMd),
-                                    child: _mediaThumb(m, p),
+                                    child: Hero(
+                                      tag: 'media-${m.id}',
+                                      child: _mediaThumb(m, p),
+                                    ),
                                   ),
                                   if (m.kind == MediaKind.livePhoto)
                                     Positioned(
@@ -280,9 +398,10 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
                           ),
                         ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                );
+              },
+            ),
             ],
           );
         },

@@ -11,6 +11,162 @@ AIGC:
 
 # CHANGELOG — 小满（原「三位一体」，v5.1.0 曾短暂更名「未满」）
 
+## v5.8.3+50（2026-10-27）· 记录统计页视觉修正（真机截图反馈）
+
+- **头部四卡重排为 2×2 等高网格**：此前一行四卡在窄屏标签必截断（"连续记录（天…"），且右列 Column 自适应高度导致四卡参差；现在两行两列、每卡固定高度 104、图标/数值/标签垂直居中，四卡基线对齐
+- **文案精简去截断**：值带单位（"1 天""10 篇""1.4 万"），标签两到四字（连续记录 / 累计日记 / 累计字数 / 最长连续）；第四卡此前值是"记录天数"标签却写"最长连续 N 天"的语义错位一并修正（记录天数信息让位给更有价值的最长连续）
+- **热力图空格子对比度强化**：surfaceContainerHighest 在深色卡片上几乎不可见（真机确认），改 onSurfaceVariant 低透明度 + 无记录格同色系细边框，深浅模式都可辨识出网格
+
+测试 79/79、analyze 0 error/0 warning；版本 5.8.3+50
+
+## v5.8.2+49（2026-10-27）· 图片打开/关闭卡顿优化
+
+定位到全屏图片卡顿的三个根因，全部修复（只动 shared/widgets.dart 的全屏预览，业务页面零改动）：
+
+- **根因一：全尺寸解码**——全屏页 `Image.file` 无 cacheWidth，1200 万像素级原图解码后 bitmap 50MB+，主 isolate 同步解码即打开瞬间掉帧。修：按屏幕物理像素宽解码（1.5x 余量，封顶 4096），内存降至 1/3~1/2，InteractiveViewer 放大 1.5x 内接近全清晰
+- **根因二：Hero 飞行显示未解码完的大图**——Hero 用目的路由的图片 widget 飞行，解码完成前是黑框→解码完突现。修：`showFullscreenImage` 在 push 前发起预解码（与 300ms 转场并行），且预热与显示用**同一 cache key**（ResizeImage），飞行开始即命中
+- **根因三：视频/实况封面同样全尺寸解码**——修法同上
+- 附带 `gaplessPlayback`：缩略图树切全屏树不闪白重载
+
+### 构建环境注记（clean 后构建必读）
+- sqlite3 3.6.0 的 native assets 构建钩子要从 GitHub Releases 下载 libsqlite3.so；本机 Dart HttpClient 到 objects.githubusercontent.com 超时（curl 可通），clean 后首次构建必失败。已用 curl 预下载 3 个 Android ABI 的 .so 预置进项目 `.dart_tool/hooks_runner/shared/sqlite3/build/download-<hash>/`（hook 有 sha256 校验，命中即跳过下载）；备份 .so 亦存 `E:\sqlite3-native\`。clean 不会删 hooks_runner 之外的缓存——注意 clean 会删掉 .dart_tool 整个目录，**此后构建前需重放预置步骤**
+
+测试 79/79、analyze 0 error/0 warning；版本 5.8.2+49
+
+## v5.8.1+48（2026-10-27）· 那年今天 + 写作灵感 + Material You + 应用内更新记录
+
+开源同类调研（Day One / StoryPad / Apple Journal / NotallyX）后落地的 5 项体验增强：
+
+- **那年今天**：首页顶部回忆卡——往年同月同日的日记横向滑动（「去年」「N 年前」+ 摘要 + 心情点），点开直达详情；没有往年记录完全隐藏不占位。Day One / StoryPad 的招牌功能
+- **写作灵感**：新建日记且全空时，标题下方出现当日灵感提示（30 条提示池按日期轮换），点一下填入标题，右侧刷新随机换——解决「打开编辑器不知道写什么」
+- **Material You 动态取色**：设置 → 外观 →「跟随系统取色」（Android 12+ 显示，默认关保持雾蓝品牌）。实现走官方 dynamic_color 包，把系统 ColorScheme 映射为骨架 Palette——界面骨架跟随壁纸，心情/日程等内容色板保持原样（骨架无彩色纪律不破坏）
+- **应用内更新记录**：设置页底部版本行可点，弹出随包发布的 CHANGELOG（轻量 Markdown 解析，纯本地）。版本号硬编码滞后问题根治：新增 lib/design/version.dart 单点真源
+- **阅读字号**：日记详情页 AppBar 字号按钮，小/标准/大三档（0.9/1.0/1.15），设置持久化
+
+### 全局复查修复（两路独立复核后）
+- **P0：用户目录备份写入 100% 静默失败**——Dart 传 String 而 Kotlin 只认 ByteArray，ClassCastException 被 catch 吞掉，v5.8 的卖点从未生效过。修：Dart 侧显式 utf8 编码
+- **P0：完整备份恢复选不中 zip**——文件选择器沿用 application/json MIME 过滤，zip 灰显。修：新增专用选择器（*/* + zip/json MIME 白名单）
+- **P1：心情小组件写入目标与展示目标不一致**——同日多篇时打卡会「看起来没反应」（圆点圈弹回旧日记）。修：写入目标对齐 home（最新带心情篇优先）
+- P2 批：更新日志弹窗跳过 YAML front matter（AIGC 元数据不再露出）；阅读字号只缩 fontSize（行距不再平方级放大）；灵感"换一个"改真随机 + 补单测；用户目录同步失败在设置页可见（"上次同步失败"）；换备份目录释放旧持久授权（防 128/512 上限累积）；完整备份 zip 改 STORE 直存（jpg/mp4 不可压，deflate 白耗 CPU）；stats_service includeToday 死参数修正
+- 构建环境：用户主目录 ~/.gradle/gradle.properties 里的死代理（127.0.0.1:65532 已关）导致新依赖拉取必失败，已注释（备份 .bak-20261027，开代理软件时恢复即可）
+
+测试 79/79（+2 灵感提示回归）、analyze 0 error/0 warning、架构 0 违规；版本 5.8.1+48
+
+## v5.8.0+47（2026-10-26）· 完整备份 + 记录统计 + 日记卡片 + 心情打卡小组件
+
+功能大版本：数据安全补强 + 日记表达力 + 桌面触达，另含构建链升级受阻记录与依赖固化。
+
+### 数据安全
+- **完整备份（含媒体）**：设置 → 备份 →「导出完整备份」把 12 表 JSON + 全部照片/视频/缩略图打成一个 zip；「从完整备份恢复」解包媒体 → 导数据 → 按当前应用目录重写 media_items 路径字段（跨机/同机都成立，防路径穿越）。纯 JSON 备份不含媒体的 v5.3 已知限制就此补上
+- **自动备份落用户目录（SAF）**：设置 → 数据安全 →「备份到用户目录」——选一个文件夹（推荐网盘同步目录），每日自动备份额外同步一份（保留 7 份滚动清理）；私有目录照写不误，用户目录写入失败静默（私有份兜底）。SAF 通道：pickBackupDir（持久授权）/ writeToTree（同名覆盖）/ listTree / deleteFromTree
+- **依赖固化**：phosphor_flutter 2.1.0（Flutter 3.47+ IconData final 兼容补丁）固化进 third_party/（dependency_overrides 指向，构建不再依赖本机 pub-cache 补丁状态）；flutter_markdown/markdown 双包确认零使用，从依赖移除（discontinued 警告随之消除）
+
+### 日记表达力
+- **记录统计页**（心情趋势页右上角进入）：连续记录天数（今天没写不断链）/ 累计篇数·字数·记录天数 / 最长连续 / 最近 26 周打卡热力图 / 全量心情分布 / 今年每月篇数。核心计算下沉 domain/services/stats_service.dart（纯函数）
+- **日记分享卡片**：详情页右上角「分享卡片」——单篇日记渲染成竖版图（日期页眉 + 心情胶囊 + 大标题 + 正文，超 600 字截断提示全文见 App），3x 像素密度截图，走系统分享面板存图/发社媒
+- **编辑器字数统计**：日记编辑器底栏实时「N 字」（标题+正文）
+- **每日打卡提醒文案动态化**：写日记提醒随打卡状态变化——已写 →「今天的日记已记录」；连续 ≥2 天未写 →「打卡第 N 天等你 · 已连续 N 天，别断更」；其余保持默认。streak 由 domain 纯函数计算（备份导入后立即同步语义）
+
+### 桌面小组件（三件美学重做 + 一件新的）
+- **美学统一**：雾蓝渐变圆角背景（20dp）+ 条目卡 12dp 圆角细描边 + 标题字距，浅深色板双写
+- **待办 4x2**：条目显示截止日（今天主色 / 明天弱化 / 过期红 M月d日）；条目多于 3 条时 ViewFlipper 每 4 秒自动翻页轮播（滑入滑出动画）；2x2 同步截止日显示
+- **心情快捷打卡 2x2（新小组件）**：8 个预设心情圆点（色值与 App 内 MoodPalette 逐一对齐），点一下直接打卡——当天有未打心情的日记直接写入，没有则建一条纯心情日记；当天已打的心情显示描边圈；点击即时反馈 + App 未运行时进待同步队列下次启动补打卡
+- 已知边界：心情小组件按预设 id 1..8 绑定（预设不可删、备份导入保留原 id，常态成立）；今日日记不做独立小组件（桌面选择器保持 4 件不臃肿，入口已有快捷方式）
+
+### 构建链（受阻记录）
+- Gradle 9.1 / AGP 9.0.1 / Kotlin 2.3.20 升级尝试**受阻于 Flutter 3.47.4 本身**：flutter_tools 的 gradle 模块绑定 kotlin-dsl 6.2.0（仅支持 Gradle 8.x），构建在 flutter_tools includeBuild 阶段即失败。已回退 8.14.3/8.12.0/2.2.20，待 Flutter SDK 升级后重试
+- 本机构建环境注记：Java 进程出站被防火墙拦截（curl 可通、Java Connection refused），wrapper 无法在线下载发行包——mirror zip 已手动置于 E:\gradle-dist\，wrapper 缓存命中 8.14.3 正常构建
+
+测试 77/77、analyze 0 error/0 warning（25 条存量 info）、架构 0 违规（加固版规则）；Kotlin 编译经 debug 构建验证；版本 5.8.0+47
+
+## v5.7.2+46（2026-10-26）· 全量复查修复：2 个 P0 数据丢失 + 8 个 P1 + 15 个 P2 + 复核二轮
+
+四路并行只读审查 + 独立复核两轮后集中修复（修复本身又经一轮新眼光复核，抓回 2 个修复期引入的回归并修正）。
+
+### P0（数据丢失）
+- **备忘编辑器已有笔记的标签永不落库**：`_controllerEntityId()` 只看 `_savedId`（仅新建首存回填），打开已有笔记恒为 null → `_flushNote` 空转 → 标签 100% 静默丢失。修：id 改 `widget.noteId ?? _savedId`；repo 新增 `setTags` 窄写通道；标签增删立即落库；首存 onSaved 补写暂存标签。新增硬门禁测试 note_editor_tags_test（修复前必红）
+- **模板启用/禁用开关清空单次/时间段日程日期**：Switch 回调手写构造漏 startDate/endDate，repo 更新分支全量覆写 → 日期写 NULL、实例被删且永不能再生成。修：ScheduleTemplate 补 copyWith（含回归测试），开关走 copyWith
+- **（复核修正）备忘骨架期覆写**：上述 id 修复使 `_flushNote` 成为真写通道后暴露——笔记未加载完就点完成/退后台会用空内容整行覆写；只打开不编辑也会刷 updatedAt 把笔记顶到列表顶。修：`_ready` 守卫 + 五字段基线快照脏检查
+- **（复核修正）单击时间块被挪到 0:00**：`onLongPressCancel` 在长按未达阈值的普通单击时也触发（SDK possible 态 reject 路径），`_dragEnd` 无守卫即按 `_dragStart` 初始值 0 存库并 detach 模板。修：`_dragId` 守卫；系统打断（来电/通知栏，accepted 后两回调均不发）改由外层 `Listener.onPointerCancel` 兜底收尾
+
+### P1（功能错误）
+- 待办撒花误触发：切到「已完成」档必撒（用筛选后列表判定）→ 改数据层判定（进行中计数 >0→0 才触发）+ 闩锁保持横幅、出现新进行中复位
+- 待办勾选动画在真实路径不可见（跨分区迁移重建 element 直接跳终态）→ 勾选后原位停留 420ms 播完动画再回流，停留期绕过筛选档
+- 锁屏竞态：设 PIN 用户冷启动闪现 /home 真实数据帧 → 新增无数据 /splash 启动占位页，gate 加载完再分发
+- 备忘退后台丢字 + 草稿只写不读：生命周期改走 AutosaveController.flush（与日记同款）+ 新建备忘补草稿恢复弹窗；退出时 tags 通道保存失败拦住退出并提示（UI 不撒谎）
+- 日记编辑器视频/实况点不开（一律当图片全屏，缩略图拉满屏）→ 按类型分流走播放器（与详情页一致）
+- 日程时间线停留期间红线冻结、跨午夜整页过期 → TimeLineView 30s 自驱时钟（今天判定随时间维护）+ 页面级跨午夜换天（数据流/日期条/FAB 跟随，换天补 regenerate）
+- 长按拖拽被系统打断永久卡拖动态 → Listener.onPointerCancel 兜底（见上 P0-4）
+- 备忘生命周期兜底绕过保存状态机 → 统一走 flush + 失败可见
+
+### P2（边缘/体验，15 项全修）
+滑动删除加撤销（按原已完成状态恢复，repo add 补 done 参数）；自动备份恢复前强制快照（与手动导入同纪律）；reduceMotion 补齐 RollingCounter/ScaleFadeIn/PopIn/趋势页折线生长与分布条 + Pulse 降级停空转 ticker；flush 在 saving 态排队等在途保存落地再按最新文本幂等保存；详情页骨架屏判定改 data 判空（重建不再闪）；回收站备忘卡 deletedAt! 强解守卫；编辑器删媒体加确认（连文件物理删不可逆）；语音 initialize 后 mounted 守卫；首页心情写入兜底取最新一篇（读写目标对齐）；模板保存门禁（标题必填 + 每周/每月第 N 周几至少选一天，堵无 BYDAY 的漂移规则）；模板长按删除入口（deleteTemplate 首次接上 UI）；小组件日程订阅跨天自动重订阅；待办页 watchAll 移出 build（点筛选不再闪骨架/归顶）；编辑器媒体 Hero 改 edit-media-$id 独立 tag（保留编辑器→全屏飞行，消除详情↔编辑器非预期串飞）；待办增删改勾后 syncNow（新建当天到期的待办即时排提醒）
+
+### P3 与工具
+弹窗 controller 泄漏×3；`tool/verify_apk.py` 加固（ABI 配对排序、异常容错、libapp <1MB 按空壳处理）；`tool/check_architecture.dart` 门禁加固（堵 package: 导入绕过 / Color.fromARGB / 行尾注释豁免）；回收站「-1 天后清除」改「即将自动清除」；备忘搜索历史 chip 回填输入框；待办空标题禁用保存；已完成档空态提示；拖动保存失败 SnackBar；笔记本页首帧骨架；备忘清单流缓存（打字不闪）；SaveStatusPill「X 分钟前」自刷新；趋势页查询移出 build（刷选不重发 SQL）
+
+测试 77/77（新增 3：备忘标签硬门禁×2 + copyWith 回归）、analyze 0 error/0 warning（16 条存量 info）、架构 0 违规（加固后规则）；版本 5.7.2+46
+
+## v5.7.1+45（2026-10-25）· 图片开/关动画补全 + 全量复查
+
+### 图片打开/关闭动画（日记图片）
+- **编辑器媒体网格**缩略图补 Hero（`media-$id`，此前只有详情页有）→ 编辑器里点图片同样从缩略图飞满全屏
+- 全屏查看器转场重构：带 Hero 时**页面只做黑幕淡入淡出**（图片飞行由 Hero 负责，不再和页面级缩放叠加显得抖）；关闭 reverseTransitionDuration 150ms→250ms，**飞回缩略图的关闭动画可见**
+- 无 Hero 的调用路径保留原缩放入场
+
+### 修复与打磨
+- RollingCounter 数字逐位**居中对齐**（原先左对齐导致 1/4 等窄数字偏位）
+- 待办撒花触发修正：进行中从「有」变「无」才撒（原先重开 App 时会对旧状态补撒一次花）
+- 全量复查：Hero 标签无冲突（编辑器/详情分属不同路由栈层级）、Dismissible 流重建安全、趋势页 eff 越界有 clamp、PopIn/Pulse 均有 mounted/reduceMotion 守卫
+
+测试 74/74、analyze 0 error/0 warning（13 info）、架构 0 违规；版本 5.7.1+45
+
+## v5.7.0+44（2026-10-25）· 动效铺满：全应用炫技级动画
+
+### 新组件（shared/widgets.dart + design/tokens.dart）
+- **RollingCounter**：逐位 Odometer 滚动计数器（上轮已入，本季扩展）
+- **PopIn**：延迟弹入（elasticOut 弹簧曲线，index 级联）——小元素入场通用件
+- **Pulse**：呼吸脉冲循环——空态图标轻微缩放，给静止页面生命感
+- **ConfettiBurst**：纯 CustomPaint 撒花（零依赖），粒子轨迹确定性生成；调色板走 design 层新 `ConfettiPalette`（低饱和六色，过架构裸色值门禁）
+
+### 各页面动效
+- **首页**：四张 Bento 卡 StaggeredEntrance 级联入场；7 天心情点带逐个弹性弹出；心情 chip 选中 1.05 弹跳 + selectionClick 触感
+- **待办**：勾选框颜色/描边平滑过渡 + 勾选图标缩放弹入 + 标题划线渐变 + 勾选 mediumImpact 触感；**清空最后一项进行中 → ConfettiBurst 撒花 +「全部完成，休息一下」**（取消勾选会重置可复现）；已完成条目**滑动删除**（Dismissible endToStart + 回执 SnackBar）
+- **日程时间轴**：时间块 ScaleFadeIn 入场；长按拖起 lightImpact 触感
+- **编辑器（日记/备忘）**：SaveStatusPill 状态切换淡入滑动动画（idle 隐藏、error 红 pill 可重试）；**保存失败 heavyImpact 重触感**（error 从无到有时只震一次）
+- **心情趋势**：折线自绘制入场动画（maxX 从 0 生长，点随线出现；上一轮的磁吸刷选 + 滚动计数器不变）
+
+触感体系：selectionClick（心情选择）/ lightImpact（拖起）/ mediumImpact（勾选、滑动删）/ heavyImpact（保存失败）——四级力度对应四种语义。测试 74/74、analyze 0 error/0 warning（13 info）、架构 0 违规；版本 5.7.0+44
+
+## v5.6.1+43（2026-10-25）· Dart 包名 trinity → xiaoman
+
+- pubspec `name: trinity` → `name: xiaoman`，6 个测试文件的 `package:trinity/` 导入同步更新（lib/ 本就全部相对导入，零改动）
+- **不动**：Android applicationId（com.xiaoman.app，与本名一致）、drift 数据库文件名（trinity.sqlite，保数据）、签名（CN=Trinity，保升级链）、MethodChannel 标识（trinity/widget、trinity/alarms、trinity/backup 等红线）
+- 对装机数据与升级链零影响；运行时行为零变化（Dart 包名仅编译期标识）
+- 测试 74/74、analyze 0 error/0 warning、架构 0 违规；版本 5.6.1+43
+
+## v5.6.0+42（2026-10-08）· 美学与交互升级：共享元素转场 + 图表磁吸刷选 + 滚动计数器
+
+### 共享元素转场（日记卡片 → 详情页）
+- 日历当天列表卡/时间线卡包 Hero（`dc-$id`）→ 详情页头部容器同 tag 配对：**卡片容器连续平滑缩放成详情头部**（背景色/圆角/标题/日期/心情胶囊一起飞）；卡片加按压缩放反馈（PressableScale）
+- 详情页正文与媒体区 ScaleFadeIn 入场（0.97→1 缩放 + 淡入，跟随 Hero 容器入场）
+- 详情页图片缩略图 Hero（`media-$id`）→ 全屏查看器同 tag 配对：图片从缩略图位置飞满全屏；showFullscreenImage 加 heroTag 可选参数
+
+### 心情趋势页重做（磁吸刷选 + 滚动计数器）
+- 折线图横向滑动/点按刷选：外层 GestureDetector 统一处理，**数据点磁吸吸附**（自动对齐最近记录），选中点放大 + 主色描边光环
+- 顶部**滚动计数器（RollingCounter，逐位 Odometer 滚动）实时联动**：刷选时「第 X / N 篇」逐位滚动；右侧日期 + 心情胶囊跟随选中淡入切换
+- 刷选提示泡（反色）显示选中记录的「日号 + 心情名」；触摸由外层统一处理，fl_chart handleBuiltInTouches 关闭避免手势竞争
+- 心情分布区抽出 _DistributionCard（逻辑不变）
+
+### 其他
+- 首页 Bento 大数字（今日日程/待办未完成数）改 RollingCounter：增减平滑滚动
+- 待办勾选框 AnimatedContainer 颜色/描边平滑过渡 + 勾选图标缩放弹入 + 标题划线渐变（AnimatedDefaultTextStyle）
+- 新组件：RollingCounter / ScaleFadeIn（shared/widgets.dart）；fl_chart ShowingTooltipIndicators 手动驱动（handleBuiltInTouches 关闭）
+
+测试 74/74（含 v5.4.2 交接的 PopScope 硬门禁）；analyze 0 error/0 warning（13 info）；架构 0 违规；版本 5.6.0+42
+
+⚠️ 构建事故修复：首个 v5.6.0 包 **libapp.so（Dart AOT 快照）缺失**（构建缓存状态异常致 AOT 任务被静默跳过），装机即 SIGSEGV 闪退（MuMu 实测抓到）。flutter clean 后重建恢复正常，并在 `tool/verify_apk.py` 新增交付前校验（libapp/libflutter 三 ABI 存在性检查），**今后每次发包构建完必须跑一遍**。
+
 ## v5.5.1+41（2026-10-08）· 全代码走查修复 4 项
 
 - **日程编辑页「标记完成」图标点了没反应（真 bug）**：`_toggleDone` 里 `setState(() {})` 空重建但 `_done` 字段没更新——图标永远停在旧状态。修：setState 时同步写入 `_done = next == done`（v5.5.0 新增按钮时引入）

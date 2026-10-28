@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trinity/data/services/live_photo_importer.dart';
+import 'package:xiaoman/data/services/live_photo_importer.dart';
 
 /// 实况照片导入器测试：
 /// ① vivo 双文件形态（主力，X200 Pro mini 字节级核实）

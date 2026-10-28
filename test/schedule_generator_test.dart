@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trinity/domain/models/schedule.dart';
-import 'package:trinity/domain/services/schedule_generator.dart';
+import 'package:xiaoman/domain/models/schedule.dart';
+import 'package:xiaoman/domain/services/schedule_generator.dart';
 
 ScheduleTemplate _tpl(
   int id,
@@ -179,6 +179,16 @@ void main() {
       rangeEnd: DateTime(2026, 10, 8),
     );
     expect(missing.map((m) => m.dateDay), [20260925, 20260926, 20260927]);
+  });
+
+  test('copyWith 保留 startDate/endDate（P0 回归：模板开关丢日期）', () {
+    final t = _tpl(1, '', 540, startDate: 20261020, endDate: 20261022);
+    final off = t.copyWith(enabled: false);
+    expect(off.enabled, isFalse);
+    expect(off.startDate, 20261020, reason: '拨一次启用开关不能清掉单次/时间段日期');
+    expect(off.endDate, 20261022);
+    expect(off.title, 'T1');
+    expect(off.rrule, '');
   });
 
   test('老的"不重复"模板（rrule 空 + 无日期）不生成，不炸', () {

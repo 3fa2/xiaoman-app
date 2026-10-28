@@ -2,16 +2,16 @@ import 'dart:convert';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trinity/data/db/database.dart';
-import 'package:trinity/data/services/backup_service.dart';
-import 'package:trinity/data/repositories/diary_repository.dart';
-import 'package:trinity/data/repositories/media_repository.dart';
-import 'package:trinity/data/repositories/note_repository.dart';
-import 'package:trinity/data/repositories/schedule_repository.dart';
-import 'package:trinity/data/repositories/settings_repository.dart';
-import 'package:trinity/data/repositories/todo_repository.dart';
-import 'package:trinity/domain/models/media.dart';
-import 'package:trinity/domain/models/schedule.dart';
+import 'package:xiaoman/data/db/database.dart';
+import 'package:xiaoman/data/services/backup_service.dart';
+import 'package:xiaoman/data/repositories/diary_repository.dart';
+import 'package:xiaoman/data/repositories/media_repository.dart';
+import 'package:xiaoman/data/repositories/note_repository.dart';
+import 'package:xiaoman/data/repositories/schedule_repository.dart';
+import 'package:xiaoman/data/repositories/settings_repository.dart';
+import 'package:xiaoman/data/repositories/todo_repository.dart';
+import 'package:xiaoman/domain/models/media.dart';
+import 'package:xiaoman/domain/models/schedule.dart';
 
 void main() {
   late AppDatabase db;

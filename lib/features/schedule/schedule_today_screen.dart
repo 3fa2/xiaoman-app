@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -19,10 +22,24 @@ class ScheduleTodayScreen extends ConsumerStatefulWidget {
       _ScheduleTodayScreenState();
 }
 
-class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
+class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen>
+    with WidgetsBindingObserver {
+  Timer? _dayTimer;
+  int _shownDay = 0;
+
+  static int _todayInt() {
+    final n = DateTime.now();
+    return n.year * 10000 + n.month * 100 + n.day;
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _shownDay = _todayInt();
+    // 跨午夜：停留页面时换天（数据流/FAB 目标/日期条跟随）；
+    // 后台期间 Timer 被挂起，resumed 时立即补一次
+    _dayTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshDay());
     // 打开页面即补生成（滚动窗口）+ 同步提醒
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final repo = ref.read(scheduleRepoProvider);
@@ -32,6 +49,31 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
             );
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dayTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshDay();
+  }
+
+  void _refreshDay() {
+    final today = _todayInt();
+    if (today == _shownDay) return;
+    setState(() => _shownDay = today);
+    // 新的一天：滚动窗口可能需要补生成实例
+    final repo = ref.read(scheduleRepoProvider);
+    if (repo.needsRegenerate) {
+      repo.regenerate().then((_) {
+        if (mounted) ref.read(reminderWarningsProvider.notifier).syncNow();
+      });
+    }
   }
 
   /// 拖拽改时间：保留时长与提醒提前量，模板实例自动分离
@@ -45,20 +87,30 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
           .add(Duration(minutes: b.startMinutes));
       remindBefore = blockStart.difference(remindAt).inMinutes;
     }
-    await repo.saveInstance(
-      id: b.id,
-      templateId: b.templateId,
-      dateDay: b.dateDay,
-      startMinutes: newStart,
-      durationMinutes: b.durationMinutes,
-      title: b.title,
-      description: b.description,
-      colorIndex: b.colorIndex,
-      detachOnEdit: true,
-      remindMinutesBefore: remindBefore != null && remindBefore > 0
-          ? remindBefore
-          : null,
-    );
+    try {
+      await repo.saveInstance(
+        id: b.id,
+        templateId: b.templateId,
+        dateDay: b.dateDay,
+        startMinutes: newStart,
+        durationMinutes: b.durationMinutes,
+        title: b.title,
+        description: b.description,
+        colorIndex: b.colorIndex,
+        detachOnEdit: true,
+        remindMinutesBefore: remindBefore != null && remindBefore > 0
+            ? remindBefore
+            : null,
+      );
+    } catch (_) {
+      // 保存失败必须可见：流未更新块会弹回原位，提示用户这次拖动没生效
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('保存失败，时间已还原')),
+        );
+      }
+      return;
+    }
     ref.read(reminderWarningsProvider.notifier).syncNow();
   }
 
@@ -66,8 +118,7 @@ class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen> {
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final todayDay =
-        now.year * 10000 + now.month * 100 + now.day;
+    final todayDay = _shownDay;
     final instances = ref.watch(scheduleRepoProvider).watchDay(todayDay);
     final warnings = ref.watch(reminderWarningsProvider);
 
@@ -370,7 +421,50 @@ class _TimeLineViewState extends State<TimeLineView> {
   int _rawStart = 0; // 拖动起始分钟（不吸附的原始值）
   double _pointerStartY = 0;
 
+  // 当前时间线自驱时钟：此前只在数据流发射时重算，页面停留期间红线冻结
+  late int _nowMinutes = widget.nowMinutes;
+  // 「这天还是不是今天」随时间维护：跨午后红线要消失（此前只在 build 时判一次）
+  late bool _isToday = widget.dateDay == _today();
+  Timer? _nowTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      final today = _today();
+      final isToday = widget.dateDay == today;
+      if (isToday != _isToday) {
+        setState(() => _isToday = isToday);
+        if (!isToday) return;
+      }
+      if (!isToday) return;
+      final n = DateTime.now();
+      final m = n.hour * 60 + n.minute;
+      if (m != _nowMinutes) setState(() => _nowMinutes = m);
+    });
+  }
+
+  @override
+  void didUpdateWidget(TimeLineView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父层重建带来的时间更新优先（跨屏/换天场景）
+    if (widget.nowMinutes != oldWidget.nowMinutes) {
+      _nowMinutes = widget.nowMinutes;
+    }
+    if (widget.dateDay != oldWidget.dateDay) {
+      _isToday = widget.dateDay == _today();
+    }
+  }
+
+  @override
+  void dispose() {
+    _nowTimer?.cancel();
+    super.dispose();
+  }
+
   void _dragBegin(ScheduleInstance b, LongPressStartDetails d) {
+    HapticFeedback.lightImpact(); // 拖起触感：提示已抓住时间块
     setState(() {
       _dragId = b.id;
       _dragStart = b.startMinutes;
@@ -394,10 +488,28 @@ class _TimeLineViewState extends State<TimeLineView> {
   }
 
   void _dragEnd(ScheduleInstance b) {
+    // 守卫：非拖拽态直接忽略。单击块时 SDK 也会触发 cancel 路径
+    // （LongGestureRecognizer possible 态 resolve rejected → onLongPressCancel），
+    // 没有这个守卫会拿 _dragStart 初始值 0 误存库把块挪到 0:00。
+    if (_dragId == null) return;
     final start = _dragStart;
     final moved = start != b.startMinutes;
     setState(() => _dragId = null);
     if (moved) widget.onBlockMove(b, start);
+  }
+
+  /// 系统级指针取消（来电/下拉通知栏打断拖拽）：LongPress 手势 accepted 后
+  /// onLongPressEnd/Cancel 都不会回调，用原始 PointerCancel 兜底收尾
+  void _cancelDrag() {
+    final id = _dragId;
+    if (id == null) return;
+    for (final b in widget.blocks) {
+      if (b.id == id) {
+        _dragEnd(b);
+        return;
+      }
+    }
+    setState(() => _dragId = null);
   }
 
   @override
@@ -406,7 +518,10 @@ class _TimeLineViewState extends State<TimeLineView> {
     final p = Theme.of(context).colorScheme;
     final positioned = _layout(widget.blocks);
 
-    return SingleChildScrollView(
+    // Listener 捕获系统级指针取消（见 _cancelDrag 注释）
+    return Listener(
+      onPointerCancel: (_) => _cancelDrag(),
+      child: SingleChildScrollView(
       child: SizedBox(
         height: TimeLineView.totalHeight,
         child: Stack(
@@ -436,11 +551,11 @@ class _TimeLineViewState extends State<TimeLineView> {
                 ),
               ),
             // 当前时间线
-            if (widget.dateDay == _today())
+            if (_isToday)
               Positioned(
                 left: 56,
                 right: AppSpacing.page,
-                top: widget.nowMinutes / 1440 * TimeLineView.totalHeight,
+                top: _nowMinutes / 1440 * TimeLineView.totalHeight,
                 child: Container(height: 1.5, color: p.primary),
               ),
             // 拖动中的时间提示（吸附粒度）
@@ -475,18 +590,21 @@ class _TimeLineViewState extends State<TimeLineView> {
                           TimeLineView.totalHeight,
                   height:
                       b.durationMinutes / 1440 * TimeLineView.totalHeight - 2,
-                  child: _BlockCard(
-                    block: b,
-                    dark: dark,
-                    dragging: b.id == _dragId,
-                    onTap: () => widget.onBlockTap(b),
-                    onDragStart: (d) => _dragBegin(b, d),
-                    onDragUpdate: _dragUpdate,
-                    onDragEnd: () => _dragEnd(b),
+                  child: ScaleFadeIn(
+                    child: _BlockCard(
+                      block: b,
+                      dark: dark,
+                      dragging: b.id == _dragId,
+                      onTap: () => widget.onBlockTap(b),
+                      onDragStart: (d) => _dragBegin(b, d),
+                      onDragUpdate: _dragUpdate,
+                      onDragEnd: () => _dragEnd(b),
+                    ),
                   ),
                 ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -558,6 +676,8 @@ class _BlockCard extends StatelessWidget {
       onLongPressStart: onDragStart,
       onLongPressMoveUpdate: onDragUpdate,
       onLongPressEnd: (_) => onDragEnd(),
+      // 拖拽被系统打断的兜底不在这里：LongPress accepted 后 cancel 不回调，
+      // 由外层 Listener.onPointerCancel 统一处理（见 _cancelDrag）
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         curve: MotionCurve.standard,

@@ -115,6 +115,8 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
         repeat: repeat,
       );
     }
+    // 新建当天到期的待办要能按时响铃：待办变化即重排提醒（与启动兜底同源）
+    ref.read(reminderWarningsProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -139,6 +141,7 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
             autofocus: true,
             maxLength: 60,
             textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() {}), // 保存按钮可用性跟随输入
             decoration: InputDecoration(
               hintText: '要做什么？',
               counterText: '',
@@ -234,8 +237,10 @@ class _TodoAddSheetState extends ConsumerState<_TodoAddSheet> {
             ],
           ),
           const SizedBox(height: AppSpacing.s24),
+          // 标题为空禁用保存（此前静默无反应，输入像是丢了）
           FilledButton(
-            onPressed: _save,
+            onPressed:
+                _titleCtrl.text.trim().isEmpty ? null : _save,
             child: Text(_editing ? '保存' : '添加'),
           ),
           const SizedBox(height: AppSpacing.s8),

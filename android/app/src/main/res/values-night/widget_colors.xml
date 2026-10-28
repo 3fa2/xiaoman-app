@@ -8,4 +8,8 @@
     <color name="widget_primary">#7FA8C9</color>
     <color name="widget_add_fg">#0E1A24</color>
     <color name="widget_ring">#767C84</color>
+    <!-- v5.8：深色侧同步补齐新色（hairline 深档 / danger 提亮 / today 跟夜间 primary） -->
+    <color name="widget_item_stroke">#2B3036</color>
+    <color name="widget_danger">#D08A80</color>
+    <color name="widget_today_fg">#7FA8C9</color>
 </resources>

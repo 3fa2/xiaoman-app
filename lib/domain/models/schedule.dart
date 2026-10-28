@@ -35,6 +35,32 @@ class ScheduleTemplate {
     required this.createdAt,
     required this.updatedAt,
   });
+
+  /// 局部更新（如启用/禁用开关）：字段拷贝漏一列就会在 saveTemplate 的
+  /// 全量覆写下清库值，必须走 copyWith 防漏。
+  ScheduleTemplate copyWith({
+    String? title,
+    String? description,
+    int? colorIndex,
+    String? rrule,
+    bool? enabled,
+  }) =>
+      ScheduleTemplate(
+        id: id,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        colorIndex: colorIndex ?? this.colorIndex,
+        rrule: rrule ?? this.rrule,
+        exdates: exdates,
+        startDate: startDate,
+        endDate: endDate,
+        startMinutes: startMinutes,
+        durationMinutes: durationMinutes,
+        remindMinutesBefore: remindMinutesBefore,
+        enabled: enabled ?? this.enabled,
+        createdAt: createdAt,
+        updatedAt: DateTime.now(),
+      );
 }
 
 /// 具体某天的块。templateId=null 为手工块；detached=true 不再受模板更新影响。

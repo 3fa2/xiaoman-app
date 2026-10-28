@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 心情选中态描边圈：叠在心情点上（透明填充 + 雾蓝 2dp 描边） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <stroke
+        android:width="2dp"
+        android:color="@color/widget_primary" />
+    <solid android:color="@android:color/transparent" />
+    <size android:width="30dp" android:height="30dp" />
+</shape>

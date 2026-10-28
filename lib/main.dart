@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -160,14 +161,33 @@ class _TrinityAppState extends ConsumerState<TrinityApp> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
+    final dynamicColor = ref.watch(dynamicColorProvider);
     final router = ref.watch(routerProvider);
-    return MaterialApp.router(
-      title: '小满',
-      theme: buildAppTheme(lightPalette, dark: false),
-      darkTheme: buildAppTheme(darkPalette, dark: true),
-      themeMode: themeMode,
-      routerConfig: router,
-      debugShowCheckedModeBanner: false,
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) {
+        // 设备是否支持动态取色（Android 12+ 且系统返回了 scheme）
+        final supported = lightDynamic != null && darkDynamic != null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            ref.read(dynamicColorProvider.notifier).setSupported(supported);
+          }
+        });
+        // 开关开且设备支持 → 骨架跟随壁纸；否则品牌雾蓝。内容色板永不动。
+        final light = dynamicColor.enabled && lightDynamic != null
+            ? Palette.fromColorScheme(lightDynamic)
+            : lightPalette;
+        final dark = dynamicColor.enabled && darkDynamic != null
+            ? Palette.fromColorScheme(darkDynamic)
+            : darkPalette;
+        return MaterialApp.router(
+          title: '小满',
+          theme: buildAppTheme(light, dark: false),
+          darkTheme: buildAppTheme(dark, dark: true),
+          themeMode: themeMode,
+          routerConfig: router,
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }

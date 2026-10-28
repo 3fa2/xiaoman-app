@@ -37,6 +37,7 @@ class TodoRepositoryImpl implements TodoRepository {
     int? dueDay,
     int? remindBefore,
     String? repeat,
+    bool done = false,
   }) async {
     final now = DateTime.now();
     final maxExp = _db.todos.sortOrder.max();
@@ -49,6 +50,7 @@ class TodoRepositoryImpl implements TodoRepository {
             dueDay: Value(dueDay),
             remindBefore: Value(remindBefore),
             repeat: Value(repeat),
+            done: Value(done),
             sortOrder: Value(next),
             createdAt: now,
             updatedAt: now,

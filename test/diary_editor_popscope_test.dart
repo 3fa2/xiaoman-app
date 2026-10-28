@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:trinity/data/db/database.dart';
-import 'package:trinity/di/providers.dart';
-import 'package:trinity/features/diary/diary_editor_screen.dart';
+import 'package:xiaoman/data/db/database.dart';
+import 'package:xiaoman/di/providers.dart';
+import 'package:xiaoman/features/diary/diary_editor_screen.dart';
 
 /// 硬门禁（用户真机反馈复现）：输入后 2 秒去抖窗口内点「完成」，
 /// PopScope 必须拦截并 flush——丢字 = P0。

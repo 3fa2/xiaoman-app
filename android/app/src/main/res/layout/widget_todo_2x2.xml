@@ -29,6 +29,7 @@
             android:layout_marginStart="7dp"
             android:text="待办"
             android:textSize="13sp"
+            android:letterSpacing="0.02"
             android:textColor="@color/widget_ink_soft" />
 
         <LinearLayout
@@ -81,6 +82,15 @@
             android:textColor="@color/widget_ink" />
 
         <TextView
+            android:id="@+id/widget_due0"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:maxLines="1"
+            android:textSize="10sp"
+            android:textColor="@color/widget_ink_soft" />
+
+        <TextView
             android:layout_width="16dp"
             android:layout_height="16dp"
             android:layout_marginStart="9dp"
@@ -94,7 +104,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/widget_item_bg"
-        android:layout_marginTop="7dp"
+        android:layout_marginTop="6dp"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
         android:paddingTop="9dp"
@@ -115,6 +125,15 @@
             android:ellipsize="end"
             android:textSize="13sp"
             android:textColor="@color/widget_ink" />
+
+        <TextView
+            android:id="@+id/widget_due1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:maxLines="1"
+            android:textSize="10sp"
+            android:textColor="@color/widget_ink_soft" />
 
         <TextView
             android:layout_width="16dp"

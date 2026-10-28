@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trinity/domain/services/rrule_service.dart';
+import 'package:xiaoman/domain/services/rrule_service.dart';
 
 void main() {
   group('RruleService.expand', () {

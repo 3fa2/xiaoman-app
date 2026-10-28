@@ -155,6 +155,15 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
           .write(NotesCompanion(pinned: Value(pinned)));
 
   @override
+  Future<void> setTags({required int noteId, required List<String> tags}) =>
+      (_db.update(_db.notes)..where((n) => n.id.equals(noteId))).write(
+        NotesCompanion(
+          tags: Value(tags.join(',')),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  @override
   Future<void> deleteNote(int id) async {
     // 软删除（v8 回收站）：清单子项随笔记一起隐藏，彻底删除时才清
     await (_db.update(_db.notes)..where((n) => n.id.equals(id))).write(

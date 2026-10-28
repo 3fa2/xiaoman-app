@@ -77,11 +77,15 @@ class NotificationService {
 
   /// 重建未来 14 天全部提醒（日程 + 待办 + 每日写日记提醒）。
   /// 返回警告（UI 显示"提醒未生效"）。
+  /// v5.8 打卡文案：[diaryRemind] 开启时传 [diaryWrittenToday]（今天是否已写）
+  /// 与 [diaryStreak]（到昨天为止的连续天数，-1=未知），通知文案随之变化。
   Future<List<String>> syncAll(
     ScheduleRepository repo, {
     List<Todo>? todos,
     bool diaryRemind = false,
     int diaryRemindMinutes = 22 * 60,
+    bool diaryWrittenToday = false,
+    int diaryStreak = -1,
   }) async {
     final warnings = <String>[];
     if (!_inited) await init();
@@ -202,7 +206,7 @@ class NotificationService {
       });
     }
 
-    // v5.3：每日写日记提醒
+    // v5.3：每日写日记提醒（v5.8 文案随打卡状态变化）
     if (diaryRemind) {
       final now2 = DateTime.now();
       var at = DateTime(
@@ -210,11 +214,16 @@ class NotificationService {
         diaryRemindMinutes ~/ 60, diaryRemindMinutes % 60,
       );
       if (!at.isAfter(now2)) at = at.add(const Duration(days: 1));
+      // 打卡文案：已写→鼓励保持；未写且连续 ≥2 天→"别断更"；否则默认
+      final (title, body) = !diaryWrittenToday && diaryStreak >= 2
+          ? ('打卡第 ${diaryStreak + 1} 天等你', '已连续 $diaryStreak 天，别断更')
+          : (diaryWrittenToday ? '今天的日记已记录' : _diaryRemindTitle,
+              diaryWrittenToday ? '保持得很好，明天见' : _diaryRemindBody);
       try {
         await _plugin.zonedSchedule(
           _diaryRemindId,
-          _diaryRemindTitle,
-          _diaryRemindBody,
+          title,
+          body,
           tz.TZDateTime.from(at, tz.local),
           const NotificationDetails(
             android: AndroidNotificationDetails(
@@ -236,8 +245,8 @@ class NotificationService {
       }
       nativePayloads.add({
         'id': _diaryRemindId,
-        'title': _diaryRemindTitle,
-        'body': _diaryRemindBody,
+        'title': title,
+        'body': body,
         'epochMs': at.millisecondsSinceEpoch,
         'channel': _diaryChannel,
         'repeatDaily': true,

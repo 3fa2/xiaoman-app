@@ -13,6 +13,8 @@ analyzer:
   exclude:
     - build/**
     - android/**
+    # 补丁固化的第三方包（phosphor_flutter 2.1.0）：不参与本项目 lint 基线
+    - third_party/**
 
 linter:
   # The lint rules applied to this project can be customized in the

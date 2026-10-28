@@ -20,7 +20,13 @@ object TodoWidgetStore {
     // 真实未完成总数（列表截断 8 条，数字不能跟着截断；-1 = 未知，按列表现算）
     private const val KEY_OPEN_COUNT = "open_count"
 
-    data class Todo(val id: Int, val title: String, val done: Boolean)
+    /// v5.8：dueDay = 截止日 yyyymmdd（null=无期限）；toggle 重建 JSON 时原样保留
+    data class Todo(
+        val id: Int,
+        val title: String,
+        val done: Boolean,
+        val dueDay: Int? = null,
+    )
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -33,7 +39,9 @@ object TodoWidgetStore {
                 JSONObject()
                     .put("id", t.id)
                     .put("title", t.title)
-                    .put("done", t.done),
+                    .put("done", t.done)
+                    // 可空字段：JSON null（org.json 的 NULL 占位，读取侧 isNull 判定）
+                    .put("dueDay", t.dueDay ?: JSONObject.NULL),
             )
         }
         prefs(ctx).edit()
@@ -53,6 +61,8 @@ object TodoWidgetStore {
                     id = o.getInt("id"),
                     title = o.optString("title", ""),
                     done = o.optBoolean("done", false),
+                    // 无键 / JSON null / 0 都视为无期限
+                    dueDay = if (o.isNull("dueDay")) null else o.optInt("dueDay", 0).takeIf { it > 0 },
                 )
             }
         } catch (e: Exception) {
@@ -88,7 +98,8 @@ object TodoWidgetStore {
                 JSONObject()
                     .put("id", t.id)
                     .put("title", t.title)
-                    .put("done", t.done),
+                    .put("done", t.done)
+                    .put("dueDay", t.dueDay ?: JSONObject.NULL),
             )
         }
         // 待同步队列语义：翻转为 done → 加入队列（App 启动时补落库）；

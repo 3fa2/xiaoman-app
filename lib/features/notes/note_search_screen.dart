@@ -25,6 +25,7 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
   List<Note>? _results;
   int _seq = 0; // 请求序号：慢查询返回晚于新查询时丢弃过期结果
   List<String> _history = const [];
+  final _queryCtrl = TextEditingController();
 
   static const _historyKey = 'note_search_history';
 
@@ -44,6 +45,7 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
         ref.read(settingsRepoProvider).set(_historyKey, jsonEncode(next)),
       );
     }
+    _queryCtrl.dispose();
     super.dispose();
   }
 
@@ -78,6 +80,7 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: TextField(
+          controller: _queryCtrl,
           autofocus: true,
           decoration: const InputDecoration(
             hintText: '搜所有笔记的标题、正文、标签',
@@ -105,7 +108,12 @@ class _NoteSearchScreenState extends ConsumerState<NoteSearchScreen> {
                       child: InputChip(
                         label: Text(h),
                         onDeleted: () => _removeHistory(h),
-                        onPressed: () => _run(h),
+                        // 回填输入框再搜：结果显示了但搜索框是空的，再输入
+                        // 任意字符会以单字符覆盖搜索
+                        onPressed: () {
+                          _queryCtrl.text = h;
+                          _run(h);
+                        },
                       ),
                     ),
                 ],

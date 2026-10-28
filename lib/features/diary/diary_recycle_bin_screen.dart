@@ -106,6 +106,9 @@ class _DiaryTrashCard extends ConsumerWidget {
         ? null
         : 30 - DateTime.now().difference(deletedAt).inDays;
 
+    // 0/负数 = 超期未清理（下次启动才清），显示「即将」而不是 -1 天
+    String leftLabel(int n) => n <= 0 ? '即将自动清除' : '$n 天后自动清除';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.cardPad),
@@ -128,7 +131,7 @@ class _DiaryTrashCard extends ConsumerWidget {
                   const SizedBox(height: AppSpacing.s4),
                   Text(
                     '记于 ${DateFormat('yyyy年M月d日', 'zh_CN').format(d)}'
-                    '${daysLeft == null ? '' : ' · $daysLeft 天后自动清除'}',
+                    '${daysLeft == null ? '' : ' · ${leftLabel(daysLeft)}'}',
                     style: AppType.caption.copyWith(
                       color: p.onSurfaceVariant,
                     ),
@@ -221,6 +224,7 @@ class _NoteTrashCard extends ConsumerWidget {
     final daysLeft = deletedAt == null
         ? null
         : 30 - DateTime.now().difference(deletedAt).inDays;
+    String leftLabel(int n) => n <= 0 ? '即将自动清除' : '$n 天后自动清除';
 
     return Card(
       child: Padding(
@@ -239,8 +243,12 @@ class _NoteTrashCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSpacing.s4),
                   Text(
-                    '删于 ${DateFormat('M月d日 HH:mm', 'zh_CN').format(deletedAt!)}'
-                    ' · $daysLeft 天后自动清除',
+                    // deletedAt 理论上非空（软删除才进回收站），但与上方
+                    // daysLeft 的空值防御保持对称，绝不强解崩整页
+                    deletedAt == null
+                        ? '已删除'
+                        : '删于 ${DateFormat('M月d日 HH:mm', 'zh_CN').format(deletedAt)}'
+                            ' · ${leftLabel(daysLeft!)}',
                     style: AppType.caption.copyWith(
                       color: p.onSurfaceVariant,
                     ),

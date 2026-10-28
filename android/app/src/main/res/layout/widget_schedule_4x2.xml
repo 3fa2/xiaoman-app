@@ -29,6 +29,7 @@
             android:layout_marginStart="7dp"
             android:text="今日日程"
             android:textSize="13sp"
+            android:letterSpacing="0.02"
             android:textColor="@color/widget_ink_soft" />
     </LinearLayout>
 
@@ -81,7 +82,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/widget_item_bg"
-        android:layout_marginTop="7dp"
+        android:layout_marginTop="6dp"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
         android:paddingTop="9dp"
@@ -120,7 +121,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/widget_item_bg"
-        android:layout_marginTop="7dp"
+        android:layout_marginTop="6dp"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
         android:paddingTop="9dp"

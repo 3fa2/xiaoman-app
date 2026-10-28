@@ -28,6 +28,8 @@ object TodoWidgetData {
             if (ids2.isNotEmpty()) {
                 TodoWidgetProvider2x2().onUpdate(context, m, ids2)
             }
+            // v5.8：待办变化顺带刷新心情打卡组件（无实例时 getAppWidgetIds 为空数组自然跳过）
+            refreshMoodWidgets(context)
         } catch (e: Exception) {
             // 刷新失败不影响主流程
         }
@@ -42,6 +44,21 @@ object TodoWidgetData {
             )
             if (ids.isNotEmpty()) {
                 ScheduleWidgetProvider().onUpdate(context, m, ids)
+            }
+        } catch (e: Exception) {
+            // 刷新失败不影响主流程
+        }
+    }
+
+    /** v5.8：刷新心情打卡小组件 */
+    fun refreshMoodWidgets(context: Context) {
+        try {
+            val m = AppWidgetManager.getInstance(context)
+            val ids = m.getAppWidgetIds(
+                ComponentName(context, MoodWidgetProvider::class.java),
+            )
+            if (ids.isNotEmpty()) {
+                MoodWidgetProvider().onUpdate(context, m, ids)
             }
         } catch (e: Exception) {
             // 刷新失败不影响主流程

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 待办小组件单条目行（v5.8，4x2 ViewFlipper 页内复用）：
+     竖条 + 标题 + 截止日 + 勾圈，整行可点（toggle 由 Provider 绑定在 row_root）。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/row_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/widget_item_bg"
+    android:layout_marginTop="6dp"
+    android:paddingLeft="10dp"
+    android:paddingRight="10dp"
+    android:paddingTop="9dp"
+    android:paddingBottom="9dp">
+
+    <TextView
+        android:id="@+id/row_bar"
+        android:layout_width="3dp"
+        android:layout_height="14dp"
+        android:background="@drawable/widget_bar" />
+
+    <TextView
+        android:id="@+id/row_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="9dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textSize="13sp"
+        android:textColor="@color/widget_ink" />
+
+    <TextView
+        android:id="@+id/row_due"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:maxLines="1"
+        android:textSize="10sp"
+        android:textColor="@color/widget_ink_soft" />
+
+    <TextView
+        android:id="@+id/row_check"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="9dp"
+        android:background="@drawable/widget_check_ring" />
+</LinearLayout>

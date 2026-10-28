@@ -52,10 +52,26 @@ class TemplateManageScreen extends ConsumerWidget {
                 index: i,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.s8),
-                  child: Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(AppRadii.rLg),
-                      onTap: () => _editTemplate(context, ref, t),
+                    child: Card(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(AppRadii.rLg),
+                        onTap: () => _editTemplate(context, ref, t),
+                        // 删除入口（deleteTemplate 此前有实现无 UI）：
+                        // 长按弹确认；未来的未完成实例一并清，已过/已分离的保留
+                        onLongPress: () async {
+                          final ok = await showConfirmSheet(
+                            context,
+                            title: '删除模板「${t.title}」？',
+                            message: '以后不再自动生成；已拖动/编辑过的实例保留',
+                          );
+                          if (!ok) return;
+                          await ref
+                              .read(scheduleRepoProvider)
+                              .deleteTemplate(t.id);
+                          ref
+                              .read(reminderWarningsProvider.notifier)
+                              .syncNow();
+                        },
                       child: Padding(
                         padding: const EdgeInsets.all(AppSpacing.cardPad),
                         child: Row(
@@ -102,21 +118,15 @@ class TemplateManageScreen extends ConsumerWidget {
                             Switch(
                               value: t.enabled,
                               onChanged: (v) {
-                                final updated = ScheduleTemplate(
-                                  id: t.id, title: t.title,
-                                  description: t.description,
-                                  colorIndex: t.colorIndex, rrule: t.rrule,
-                                  exdates: t.exdates,
-                                  startMinutes: t.startMinutes,
-                                  durationMinutes: t.durationMinutes,
-                                  remindMinutesBefore: t.remindMinutesBefore,
-                                  enabled: v,
-                                  createdAt: t.createdAt,
-                                  updatedAt: t.updatedAt,
-                                );
+                                // copyWith 全量拷贝：P0 修复——手写构造漏了
+                                // startDate/endDate，单次/时间段模板拨一次开关
+                                // 日期就被清空且实例无法再生。
                                 ref
                                     .read(scheduleRepoProvider)
-                                    .saveTemplate(updated, isNew: false)
+                                    .saveTemplate(
+                                      t.copyWith(enabled: v),
+                                      isNew: false,
+                                    )
                                     .then(
                                       (_) => ref
                                           .read(reminderWarningsProvider
@@ -228,6 +238,8 @@ class TemplateManageScreen extends ConsumerWidget {
                   controller: titleCtrl,
                   decoration: const InputDecoration(labelText: '标题'),
                   style: AppType.body.copyWith(color: p.onSurface),
+                  // 保存按钮的可用性跟随输入重建
+                  onChanged: (_) => setSheet(() {}),
                 ),
                 const SizedBox(height: AppSpacing.withinBlock),
                 TextField(
@@ -459,18 +471,50 @@ class TemplateManageScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.s24),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('保存'),
-                ),
+                // 门禁：标题必填；每周/每月第N周几必须至少选一个周几——
+                // 否则会生成无 BYDAY 的 WEEKLY，展开日随窗口漂移（静默错规则）
+                Builder(builder: (ctx) {
+                  final weekdaysRequired =
+                      freq == RepeatFreq.weekly ||
+                          freq == RepeatFreq.monthlyByNthWeekday;
+                  final titleEmpty = titleCtrl.text.trim().isEmpty;
+                  final canSave =
+                      !titleEmpty && (!weekdaysRequired || weekdays.isNotEmpty);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FilledButton(
+                        onPressed:
+                            canSave ? () => Navigator.pop(ctx, true) : null,
+                        child: const Text('保存'),
+                      ),
+                      if (!canSave)
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.s8),
+                          child: Text(
+                            titleEmpty ? '标题还没填' : '至少选一个周几',
+                            style: AppType.caption.copyWith(color: p.error),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
+                  );
+                }),
               ],
             ),
           ),
         ),
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      titleCtrl.dispose();
+      descCtrl.dispose();
+      return;
+    }
     final title = titleCtrl.text.trim();
+    final desc = descCtrl.text.trim();
+    titleCtrl.dispose();
+    descCtrl.dispose();
     if (title.isEmpty) return;
 
     final rrule = RruleService.build(
@@ -505,7 +549,7 @@ class TemplateManageScreen extends ConsumerWidget {
     final template = ScheduleTemplate(
       id: t?.id ?? 0,
       title: title,
-      description: descCtrl.text.trim(),
+      description: desc,
       colorIndex: colorIndex,
       rrule: rrule,
       exdates: t?.exdates ?? '',

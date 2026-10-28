@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -52,8 +53,13 @@ class HomeScreen extends ConsumerWidget {
           AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.listBottom,
         ),
         children: [
+          // ⓪ 那年今天（有往年今日的记录才显示；Day One/StoryPad 式回忆）
+          _OnThisDayBento(stream: diaries, moods: moods),
           // ① 此刻心情（全宽卡）
-          _MoodBento(moods: moods, diaries: diaries),
+          StaggeredEntrance(
+            index: 0,
+            child: _MoodBento(moods: moods, diaries: diaries),
+          ),
           const SizedBox(height: AppSpacing.s12),
           // ② 不等高网格：左「今日日记」高卡 + 右「日程/待办」竖排
           IntrinsicHeight(
@@ -62,16 +68,29 @@ class HomeScreen extends ConsumerWidget {
               children: [
                 Expanded(
                   flex: 3,
-                  child: _TodayDiariesBento(stream: diaries, moods: moods),
+                  child: StaggeredEntrance(
+                    index: 1,
+                    child: _TodayDiariesBento(stream: diaries, moods: moods),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.s12),
                 Expanded(
                   flex: 2,
                   child: Column(
                     children: [
-                      Expanded(child: _ScheduleBento(stream: blocks)),
+                      Expanded(
+                        child: StaggeredEntrance(
+                          index: 2,
+                          child: _ScheduleBento(stream: blocks),
+                        ),
+                      ),
                       const SizedBox(height: AppSpacing.s12),
-                      Expanded(child: _TodoBento(stream: todos)),
+                      Expanded(
+                        child: StaggeredEntrance(
+                          index: 3,
+                          child: _TodoBento(stream: todos),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -212,13 +231,15 @@ class _MoodCheckinState extends ConsumerState<_MoodCheckin> {
             final isToday = _target == today;
             final isYesterday = _target == yesterday;
             final targetDay = _dayKey(_target);
-            final targetDiaries =
-                all.where((d) => d.dateDay == targetDay).toList();
-            // 同日多篇：取最新创建且带心情的一篇作为"当日心情"
-            final withMood = targetDiaries
-                .where((d) => d.moodId != null)
+            final targetDiaries = all
+                .where((d) => d.dateDay == targetDay)
                 .toList()
+              // 排序后 withMood 与「无心情时的写入兜底」都取最新一篇，
+              // 读写目标一致（兜底此前未排序，心情会挂到最旧一篇）
               ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            // 同日多篇：取最新创建且带心情的一篇作为"当日心情"
+            final withMood =
+                targetDiaries.where((d) => d.moodId != null).toList();
             final current =
                 withMood.isEmpty ? null : withMood.first.moodId;
             return Column(
@@ -381,7 +402,9 @@ class _MoodWeekStrip extends StatelessWidget {
               final mood = moodId == null ? null : moodMap[moodId];
               final isToday = i == 0;
               return Expanded(
-                child: Column(
+                child: PopIn(
+                  index: 6 - i,
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
@@ -409,8 +432,9 @@ class _MoodWeekStrip extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
-            }),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -435,7 +459,14 @@ class _MoodChip extends StatelessWidget {
     final p = Theme.of(context).colorScheme;
     final color = MoodPalette.colorOf(mood.hue, dark: dark);
     return PressableScale(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedScale(
+      duration: MotionDuration.base,
+      curve: MotionCurve.standard,
+      scale: selected ? 1.05 : 1.0,
       child: AnimatedContainer(
         duration: MotionDuration.base,
         curve: MotionCurve.standard,
@@ -475,6 +506,7 @@ class _MoodChip extends StatelessWidget {
             ],
           ],
         ),
+      ),
       ),
     );
   }
@@ -659,8 +691,8 @@ class _ScheduleBento extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '${list.length}',
+                  RollingCounter(
+                    value: list.length,
                     style: AppType.display.copyWith(
                       color: p.primary,
                       fontSize: 34,
@@ -723,8 +755,8 @@ class _TodoBento extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '${open.length}',
+                  RollingCounter(
+                    value: open.length,
                     style: AppType.display.copyWith(
                       color: p.primary,
                       fontSize: 34,
@@ -753,6 +785,152 @@ class _TodoBento extends StatelessWidget {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+/// 那年今天（v5.8.1，Day One/StoryPad 式回忆）：往年同月同日的日记横滑卡。
+/// 无往年记录时完全隐藏（不占位）；有记录时显示「N 年前 · 摘要」。
+class _OnThisDayBento extends ConsumerWidget {
+  const _OnThisDayBento({required this.stream, required this.moods});
+
+  final Stream<List<Diary>> stream;
+  final Stream<List<Mood>> moods;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = DateTime.now();
+    return StreamBuilder<List<Diary>>(
+      stream: stream,
+      builder: (context, snap) {
+        final all = snap.data ?? const <Diary>[];
+        // 同月同日且年份更早（排除今天刚写的）
+        final memories = all
+            .where(
+              (d) =>
+                  d.dateDay % 10000 == now.month * 100 + now.day &&
+                  d.dateDay ~/ 10000 < now.year,
+            )
+            .toList()
+          ..sort((a, b) => b.dateDay.compareTo(a.dateDay));
+        if (memories.isEmpty) return const SizedBox.shrink();
+        return StreamBuilder<List<Mood>>(
+          stream: moods,
+          builder: (context, moodSnap) {
+            final moodMap = {
+              for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m,
+            };
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.s12),
+              child: Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.cardPad),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          PhosphorIcon(
+                            PhosphorIconsRegular.clockCounterClockwise,
+                            size: 15,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: AppSpacing.s8),
+                          Text(
+                            '那年今天',
+                            style: AppType.label.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.s8),
+                      SizedBox(
+                        height: 64,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: memories.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: AppSpacing.s8),
+                          itemBuilder: (context, i) {
+                            final d = memories[i];
+                            final year = d.dateDay ~/ 10000;
+                            final yearsAgo = now.year - year;
+                            final mood =
+                                d.moodId == null ? null : moodMap[d.moodId];
+                            final dark =
+                                Theme.of(context).brightness == Brightness.dark;
+                            return PressableScale(
+                              onTap: () => context.openDiaryDetail(d.id),
+                              child: Container(
+                                width: 220,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.s12,
+                                  vertical: AppSpacing.s8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadii.rMd),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          yearsAgo == 1 ? '去年' : '$yearsAgo 年前',
+                                          style: AppType.caption.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        if (mood != null) ...[
+                                          const SizedBox(width: AppSpacing.s4),
+                                          MoodDot(
+                                            color: MoodPalette.colorOf(
+                                              mood.hue,
+                                              dark: dark,
+                                            ),
+                                            size: 6,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: AppSpacing.s4),
+                                    Text(
+                                      (d.title.isNotEmpty ? d.title : d.summary)
+                                          .replaceAll(RegExp(r'\s+'), ' '),
+                                      style: AppType.caption.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );

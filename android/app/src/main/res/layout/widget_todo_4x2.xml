@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 待办小组件 4x2：大数字头部 + 圆形[+] + 最多 3 条装饰条卡（点条目勾选）。
+<!-- 待办小组件 4x2（v5.8）：大数字头部 + 圆形[+] + ViewFlipper 轮播（每页 3 条，
+     每 4 秒翻页）；条目行由 Provider 以嵌套 RemoteViews 填充。
      RemoteViews 布局禁用裸 View/Space，全部用白名单控件。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -29,6 +30,7 @@
             android:layout_marginStart="7dp"
             android:text="待办"
             android:textSize="13sp"
+            android:letterSpacing="0.02"
             android:textColor="@color/widget_ink_soft" />
 
         <LinearLayout
@@ -50,114 +52,23 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="12dp" />
+        android:layout_height="6dp" />
 
-    <LinearLayout
-        android:id="@+id/widget_row0"
+    <ViewFlipper
+        android:id="@+id/widget_flipper"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/widget_item_bg"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingTop="9dp"
-        android:paddingBottom="9dp">
+        android:autoStart="true"
+        android:flipInterval="4000"
+        android:inAnimation="@anim/slide_in_bottom"
+        android:outAnimation="@anim/slide_out_bottom">
 
-        <TextView
-            android:layout_width="3dp"
-            android:layout_height="14dp"
-            android:background="@drawable/widget_bar" />
-
-        <TextView
-            android:id="@+id/widget_title0"
-            android:layout_width="0dp"
+        <!-- 初始占位空页：Provider onUpdate 时 removeAllViews 后填真实页 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="9dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textSize="13.5sp"
-            android:textColor="@color/widget_ink" />
-
-        <TextView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="9dp"
-            android:background="@drawable/widget_check_ring" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/widget_row1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/widget_item_bg"
-        android:layout_marginTop="7dp"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingTop="9dp"
-        android:paddingBottom="9dp">
-
-        <TextView
-            android:layout_width="3dp"
-            android:layout_height="14dp"
-            android:background="@drawable/widget_bar" />
-
-        <TextView
-            android:id="@+id/widget_title1"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="9dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textSize="13.5sp"
-            android:textColor="@color/widget_ink" />
-
-        <TextView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="9dp"
-            android:background="@drawable/widget_check_ring" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/widget_row2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/widget_item_bg"
-        android:layout_marginTop="7dp"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingTop="9dp"
-        android:paddingBottom="9dp">
-
-        <TextView
-            android:layout_width="3dp"
-            android:layout_height="14dp"
-            android:background="@drawable/widget_bar" />
-
-        <TextView
-            android:id="@+id/widget_title2"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="9dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textSize="13.5sp"
-            android:textColor="@color/widget_ink" />
-
-        <TextView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="9dp"
-            android:background="@drawable/widget_check_ring" />
-    </LinearLayout>
+            android:orientation="vertical" />
+    </ViewFlipper>
 
     <TextView
         android:id="@+id/widget_empty"

@@ -41,6 +41,25 @@ class Palette {
     required this.danger,
     required this.success,
   });
+
+  /// Material You：把系统动态 ColorScheme 映射成本项目的骨架 Palette。
+  /// 只影响骨架（底色/卡片/描边/强调色）；心情/日程等内容色板不动——
+  /// 与「骨架无彩色，颜色只出现在内容组件」的设计纪律一致。
+  static Palette fromColorScheme(ColorScheme s) => Palette(
+        canvas: s.surface,
+        canvasAlt: s.surfaceContainerHighest,
+        surface: s.surfaceContainerLow,
+        surfaceAlt: s.surfaceContainer,
+        ink: s.onSurface,
+        inkSoft: s.onSurfaceVariant,
+        inkFaint: s.outline,
+        hairline: s.outlineVariant,
+        primary: s.primary,
+        onPrimary: s.onPrimary,
+        primarySoft: s.primaryContainer,
+        danger: s.error,
+        success: s.tertiary,
+      );
 }
 
 const lightPalette = Palette(
@@ -209,4 +228,11 @@ abstract final class SchedulePalette {
     final list = dark ? darkColors : lightColors;
     return list[index.clamp(0, list.length - 1)];
   }
+}
+/// 撒花调色板：庆祝时刻专用（待办全部完成等），低饱和六色
+abstract final class ConfettiPalette {
+  static const colors = <Color>[
+    Color(0xFFE8B04B), Color(0xFF7FC98F), Color(0xFF6FA8D8),
+    Color(0xFFD88FB4), Color(0xFF9B8FD8), Color(0xFFD8A06F),
+  ];
 }

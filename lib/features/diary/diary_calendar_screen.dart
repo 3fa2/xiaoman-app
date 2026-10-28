@@ -521,8 +521,12 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
         ),
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      nameCtrl.dispose();
+      return;
+    }
     final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
     if (name.isEmpty) return;
     await ref
         .read(diaryRepoProvider)
@@ -540,7 +544,11 @@ class _DiaryCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = Theme.of(context).colorScheme;
     // 缩略图可能为 null（视频无 thumb 且无 cover），用守卫占位框代替 File(null) 崩溃
-    return Card(
+    // Hero：卡片 → 详情头部容器连续缩放（dc-$id 与详情页配对）
+    return PressableScale(
+      child: Hero(
+        tag: 'dc-${diary.id}',
+        child: Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.rLg),
         onTap: () => context.openDiaryDetail(diary.id),
@@ -668,6 +676,8 @@ class _DiaryCard extends ConsumerWidget {
             },
           ),
         ),
+      ),
+      ),
       ),
     );
   }

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trinity/domain/models/media.dart';
-import 'package:trinity/domain/repositories/repositories.dart';
-import 'package:trinity/domain/services/autosave_controller.dart';
+import 'package:xiaoman/domain/models/media.dart';
+import 'package:xiaoman/domain/repositories/repositories.dart';
+import 'package:xiaoman/domain/services/autosave_controller.dart';
 
 /// P0-1 硬门禁：测试 A（输入→立刻返回→内容还在）与
 /// 测试 C（Repository 抛异常 → UI 必须显示"保存失败"且不得显示"已保存"）

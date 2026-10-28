@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterFragmentActivity() {
 
     private var pendingResult: MethodChannel.Result? = null
+    private var pendingDirResult: MethodChannel.Result? = null
 
     companion object {
         /// 小组件 + 按钮带来的打开动作（冷启动时 engine 未就绪先存这里，
@@ -73,6 +75,12 @@ class MainActivity : FlutterFragmentActivity() {
                         WidgetChannelBridge.pushSchedule(applicationContext, json, remaining, dateDay)
                         result.success(null)
                     }
+                    "updateMood" -> {
+                        // v5.8：心情打卡小组件推送（-1 = 今天没有心情）
+                        val moodId = call.argument<Int>("moodId") ?: -1
+                        WidgetChannelBridge.pushTodayMood(applicationContext, moodId)
+                        result.success(null)
+                    }
                     "getLaunchAction" -> {
                         val a = launchAction
                         launchAction = null
@@ -81,6 +89,11 @@ class MainActivity : FlutterFragmentActivity() {
                     "drainPending" -> {
                         // App 启动时同步待处理勾选（App 没运行时小组件标记的 toggle）
                         val ids = TodoWidgetStore.drainPendingToggles(applicationContext)
+                        result.success(ids)
+                    }
+                    "drainPendingMoods" -> {
+                        // v5.8：App 启动时同步待处理心情打卡（App 没运行时小组件的点击）
+                        val ids = MoodWidgetStore.drainPendingMoodPicks(applicationContext)
                         result.success(ids)
                     }
                     else -> result.notImplemented()
@@ -129,7 +142,7 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
-        // 备份导入通道：SAF 选 JSON 文件 + 读 content URI
+        // 备份导入通道：SAF 选 JSON 文件 + 读 content URI + v5.8 备份目录（写入/列出/清理）
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "trinity/backup")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -143,6 +156,27 @@ class MainActivity : FlutterFragmentActivity() {
                         @Suppress("DEPRECATION")
                         startActivityForResult(intent, 1001)
                     }
+                    "pickBackupFile" -> {
+                        // v5.8.1：完整备份恢复选 zip——JSON MIME 过滤会让 zip 灰显选不中，
+                        // 放宽到 */* 并给 MIME 白名单兜底
+                        pendingResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(
+                                Intent.EXTRA_MIME_TYPES,
+                                arrayOf(
+                                    "application/zip",
+                                    "application/x-zip-compressed",
+                                    "application/octet-stream",
+                                    "application/json",
+                                ),
+                            )
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                        }
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, 1003)
+                    }
                     "readFile" -> {
                         val uriStr = call.argument<String>("uri")
                         if (uriStr == null) { result.error("no_uri", "missing uri", null); return@setMethodCallHandler }
@@ -154,6 +188,122 @@ class MainActivity : FlutterFragmentActivity() {
                             result.error("read_failed", e.message, null)
                         }
                     }
+                    "pickBackupDir" -> {
+                        // v5.8：选自动备份目录（SAF tree），持久授权后 Dart 侧存 settings
+                        pendingDirResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                            addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                            )
+                        }
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, 1002)
+                    }
+                    "releaseTreePermission" -> {
+                        // v5.8.1：换目录时释放旧持久授权（系统 128/512 上限，防累积）
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr.isNullOrBlank()) {
+                            result.error("bad_args", "uri required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            contentResolver.releasePersistableUriPermission(
+                                Uri.parse(uriStr),
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    "writeToTree" -> {
+                        val uriStr = call.argument<String>("uri")
+                        val name = call.argument<String>("fileName")
+                        val bytes = call.argument<ByteArray>("bytes")
+                        if (uriStr == null || name == null || bytes == null) {
+                            result.error("bad_args", "uri/fileName/bytes required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val tree = Uri.parse(uriStr)
+                            val dirId = DocumentsContract.getTreeDocumentId(tree)
+                            val dirUri = DocumentsContract.buildDocumentUriUsingTree(tree, dirId)
+                            // 同名覆盖：先查后删（createDocument 同名会生成 (1) 后缀）
+                            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
+                            contentResolver.query(
+                                children,
+                                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                                null, null, null,
+                            )?.use { c ->
+                                while (c.moveToNext()) {
+                                    if (c.getString(1) == name) {
+                                        val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
+                                        DocumentsContract.deleteDocument(contentResolver, docUri)
+                                    }
+                                }
+                            }
+                            val newDoc = DocumentsContract.createDocument(
+                                contentResolver, dirUri, "application/json", name,
+                            ) ?: throw IllegalStateException("createDocument returned null")
+                            contentResolver.openOutputStream(newDoc)?.use { it.write(bytes) }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("write_failed", e.message, null)
+                        }
+                    }
+                    "listTree" -> {
+                        // 返回 [fileName]，按名字升序（自动备份名内嵌时间戳，字典序=时间序）
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr == null) { result.error("no_uri", "missing uri", null); return@setMethodCallHandler }
+                        try {
+                            val tree = Uri.parse(uriStr)
+                            val dirId = DocumentsContract.getTreeDocumentId(tree)
+                            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
+                            val names = mutableListOf<String>()
+                            contentResolver.query(
+                                children,
+                                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                                null, null, null,
+                            )?.use { c ->
+                                while (c.moveToNext()) names.add(c.getString(0))
+                            }
+                            names.sort()
+                            result.success(names)
+                        } catch (e: Exception) {
+                            result.error("list_failed", e.message, null)
+                        }
+                    }
+                    "deleteFromTree" -> {
+                        val uriStr = call.argument<String>("uri")
+                        val name = call.argument<String>("fileName")
+                        if (uriStr == null || name == null) {
+                            result.error("bad_args", "uri/fileName required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val tree = Uri.parse(uriStr)
+                            val dirId = DocumentsContract.getTreeDocumentId(tree)
+                            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
+                            var deleted = false
+                            contentResolver.query(
+                                children,
+                                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                                null, null, null,
+                            )?.use { c ->
+                                while (c.moveToNext()) {
+                                    if (c.getString(1) == name) {
+                                        val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
+                                        deleted = DocumentsContract.deleteDocument(contentResolver, docUri)
+                                    }
+                                }
+                            }
+                            result.success(deleted)
+                        } catch (e: Exception) {
+                            result.error("delete_failed", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -162,14 +312,36 @@ class MainActivity : FlutterFragmentActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001) {
-            val r = pendingResult
-            pendingResult = null
-            if (r == null) return
-            if (resultCode == Activity.RESULT_OK && data?.data != null) {
-                r.success(data.data.toString())
-            } else {
-                r.success(null)
+        when (requestCode) {
+            // 1001=JSON 备份 / 1003=完整备份 zip：同为文件选择，结果处理一致
+            1001, 1003 -> {
+                val r = pendingResult
+                pendingResult = null
+                if (r == null) return
+                if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                    r.success(data.data.toString())
+                } else {
+                    r.success(null)
+                }
+            }
+            1002 -> {
+                val r = pendingDirResult
+                pendingDirResult = null
+                if (r == null) return
+                if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                    // 持久授权：重启后仍可写（读写都要）
+                    try {
+                        contentResolver.takePersistableUriPermission(
+                            data.data!!,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                    } catch (_: SecurityException) {
+                        // 某些提供商不给持久授权：仍返回 uri，本次会话内可用
+                    }
+                    r.success(data.data.toString())
+                } else {
+                    r.success(null)
+                }
             }
         }
     }

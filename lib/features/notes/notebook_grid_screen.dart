@@ -47,6 +47,14 @@ class _NotebookGridScreenState extends ConsumerState<NotebookGridScreen> {
         stream: ref.watch(noteRepoProvider).watchNotebooks(),
         builder: (context, snap) {
           final list = snap.data ?? const <Notebook>[];
+          // 流首帧未到先给骨架，不闪「还没有笔记本」空态
+          if (list.isEmpty &&
+              snap.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(AppSpacing.page),
+              child: SkeletonList(),
+            );
+          }
           if (list.isEmpty) {
             return EmptyState(
               icon: PhosphorIconsRegular.sticker,
@@ -260,8 +268,12 @@ class _NotebookGridScreenState extends ConsumerState<NotebookGridScreen> {
         ),
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      nameCtrl.dispose();
+      return;
+    }
     final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
     if (name.isEmpty) return;
     await ref
         .read(noteRepoProvider)

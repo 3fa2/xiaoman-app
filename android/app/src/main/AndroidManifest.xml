@@ -122,6 +122,20 @@
                 android:resource="@xml/widget_schedule_4x2_info"/>
         </receiver>
 
+        <!-- 心情打卡小组件（v5.8）：8 个预设心情点，点击打卡到当天最新日记 -->
+        <receiver
+            android:name=".MoodWidgetProvider"
+            android:exported="false"
+            android:label="心情打卡">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="com.xiaoman.app.widget.MOOD_PICK"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_mood_2x2_info"/>
+        </receiver>
+
         <!-- Flutter 引擎注册表（Flutter 3.x 标准配置） -->
         <meta-data
             android:name="flutterEmbedding"

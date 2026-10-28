@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show OrderingTerm;
+import 'package:archive/archive_io.dart' as zip;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -147,6 +150,168 @@ class BackupServiceImpl {
     await Share.shareXFiles(
       [XFile(path, mimeType: 'text/markdown')],
       text: '小满日记导出（Markdown）',
+    );
+  }
+
+  // ---- 完整备份 v5.8：JSON + 媒体文件 zip ----
+  // 纯 JSON 备份不含媒体（CHANGELOG v5.3.0 起的已知限制），换机图片全丢。
+  // zip 结构：backup.json + <docs 相对路径>（media/{owner}/{id}/{stamp}-{name}）。
+  // 导入时按「当前 docs 路径」重写 media_items 行，跨机/同机都成立。
+
+  /// 收集库内引用的全部媒体文件（去重、过滤已不存在的孤儿引用）
+  Future<Set<String>> _collectMediaPaths() async {
+    final rows = await _db.select(_db.mediaItems).get();
+    final paths = <String>{};
+    for (final r in rows) {
+      for (final path in [r.coverPath, r.videoPath, r.thumbPath]) {
+        if (path == null || path.isEmpty) continue;
+        if (File(path).existsSync()) paths.add(path);
+      }
+    }
+    return paths;
+  }
+
+  /// zip 内条目名：相对 docs 的 posix 路径（media/diary/42/173…-a.jpg）
+  @visibleForTesting
+  static String zipEntryNameFor(String filePath, String docsPath) {
+    final rel = p.relative(filePath, from: docsPath).replaceAll('\\', '/');
+    return rel;
+  }
+
+  /// 从（任意前缀的）媒体绝对路径提取 media/ 起始的尾段
+  @visibleForTesting
+  static String? mediaTailOf(String? path) {
+    if (path == null || path.isEmpty) return null;
+    final norm = path.replaceAll('\\', '/');
+    final i = norm.indexOf('/media/');
+    if (i == -1) return null;
+    return norm.substring(i + 1); // media/...
+  }
+
+  /// 导出完整备份（JSON + 全部媒体）到指定 zip 路径，返回路径。
+  /// level 0 = STORE 直存（archive 未导出 STORE 常量）：jpg/mp4 本身已压缩，
+  /// deflate 白耗 CPU 且峰值内存更高。
+  Future<String> exportFullBackupTo(String zipPath) async {
+    await _db.checkpoint();
+    final docs = await getApplicationDocumentsDirectory();
+    final json = await exportAllJsonString();
+
+    final encoder = zip.ZipFileEncoder();
+    encoder.create(zipPath, level: 0);
+    encoder.addArchiveFile(zip.ArchiveFile.string('backup.json', json));
+    try {
+      for (final path in await _collectMediaPaths()) {
+        final entry = zipEntryNameFor(path, docs.path);
+        await encoder.addFile(File(path), entry);
+      }
+    } finally {
+      await encoder.close();
+    }
+    return zipPath;
+  }
+
+  /// 导出完整备份到 docs（默认命名），返回文件路径
+  Future<String> exportFullBackup() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final n = DateTime.now();
+    final stamp = '${n.year}'
+        '${n.month.toString().padLeft(2, '0')}'
+        '${n.day.toString().padLeft(2, '0')}-${n.hour}'
+        '${n.minute.toString().padLeft(2, '0')}';
+    return exportFullBackupTo('${docs.path}/xiaoman-full-$stamp.zip');
+  }
+
+  Future<void> shareFullBackup() async {
+    final path = await exportFullBackup();
+    await Share.shareXFiles(
+      [XFile(path, mimeType: 'application/zip')],
+      text: '小满完整备份（含媒体）',
+    );
+  }
+
+  /// 完整备份恢复：SAF 选 zip（v5.8.1 起走专用选择器，MIME 白名单含 zip——
+  /// 复用 pickJsonFile 的 application/json 过滤会让 zip 灰显选不中）→
+  /// 解媒体文件 → 导 JSON → 按「media/ 尾段」重写 media_items 路径。
+  Future<({int diaries, int notes, int schedules, int media})>
+      importFullBackup() async {
+    final uri = await _channel.invokeMethod<String>('pickBackupFile');
+    if (uri == null) throw Exception('未选择文件');
+    final bytes = await _channel.invokeMethod<Uint8List>('readFile', {'uri': uri});
+    if (bytes == null) throw Exception('读取失败');
+    return importFullBackupFromBytes(bytes);
+  }
+
+  /// 恢复核心（可测）：zip 字节 → 媒体落位 → JSON 导入 → 路径重写。
+  Future<({int diaries, int notes, int schedules, int media})>
+      importFullBackupFromBytes(Uint8List bytes) async {
+    final archive = zip.ZipDecoder().decodeBytes(bytes);
+    final jsonEntry = archive.findFile('backup.json');
+    if (jsonEntry == null) {
+      throw Exception('不是完整备份：缺少 backup.json');
+    }
+    final docs = await getApplicationDocumentsDirectory();
+
+    // 1. 媒体文件解到当前 docs（先落位，JSON 导入后重写路径才查得到）
+    var mediaCount = 0;
+    for (final entry in archive) {
+      if (entry.isFile && entry.name.startsWith('media/')) {
+        // 防路径穿越：条目名不允许 .. 或绝对段
+        final parts = entry.name.split('/')
+          ..removeWhere((s) => s.isEmpty || s == '.');
+        if (parts.any((s) => s == '..')) continue;
+        final target = File(p.joinAll([docs.path, ...parts]));
+        await target.create(recursive: true);
+        await target.writeAsBytes(entry.content as List<int>, flush: true);
+        mediaCount++;
+      }
+    }
+
+    // 2. JSON 结构化导入（沿用既有清表/FTS rebuild/种子兜底）
+    final json = utf8.decode(jsonEntry.content as List<int>);
+    final stats = await importFromJsonString(json);
+
+    // 3. 路径重写：把库里的旧前缀绝对路径换成当前 docs 前缀（按 media/ 尾段）
+    final rows = await _db.select(_db.mediaItems).get();
+    for (final r in rows) {
+      String? newPath(String? old) {
+        final tail = mediaTailOf(old);
+        if (tail == null) return null;
+        final candidate = p.join(docs.path, tail);
+        return File(candidate).existsSync() ? candidate : null;
+      }
+
+      final cover = newPath(r.coverPath);
+      final video = newPath(r.videoPath);
+      final thumb = newPath(r.thumbPath);
+      if (cover != r.coverPath || video != r.videoPath || thumb != r.thumbPath) {
+        await (_db.update(_db.mediaItems)..where((m) => m.id.equals(r.id)))
+            .write(
+          MediaItemsCompanion(
+            coverPath: cover == null
+                ? (r.coverPath == null
+                    ? const Value.absent()
+                    : Value(null))
+                : Value(cover),
+            videoPath: video == null
+                ? (r.videoPath == null
+                    ? const Value.absent()
+                    : Value(null))
+                : Value(video),
+            thumbPath: thumb == null
+                ? (r.thumbPath == null
+                    ? const Value.absent()
+                    : Value(null))
+                : Value(thumb),
+          ),
+        );
+      }
+    }
+
+    return (
+      diaries: stats.diaries,
+      notes: stats.notes,
+      schedules: stats.schedules,
+      media: mediaCount,
     );
   }
 

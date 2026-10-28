@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -15,6 +17,7 @@ import '../../di/providers.dart';
 import '../../domain/models/diary.dart';
 import '../../domain/models/media.dart';
 import '../../domain/services/autosave_controller.dart';
+import 'journal_prompts.dart';
 import '../shared/widgets.dart';
 
 /// 日记编辑器（P0-1 自动保存重做）。
@@ -62,6 +65,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   int? _savedId;
   /// 退出流程进行中（防双击完成/系统返回并发触发两次 flush+pop）
   bool _popping = false;
+  SaveStatus? _lastStatus; // 保存失败重触感：只在 error 从无到有时震一次
 
   /// 实体 id：编辑已有 → 固定；新建 → 首存后回填
   int? get _entityId => widget.diaryId ?? _savedId;
@@ -302,6 +306,12 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   }
 
   void _onSaveStatus() {
+    // 保存失败重触感：错误从无到有时重震一下（UI pill + 触感双通道）
+    if (_controller.status == SaveStatus.error &&
+        _lastStatus != SaveStatus.error) {
+      HapticFeedback.heavyImpact();
+    }
+    _lastStatus = _controller.status;
     if (mounted) setState(() {});
   }
 
@@ -471,17 +481,18 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
   Future<void> _toggleSpeech() async {
     if (_listening) {
       await _speech.stop();
-      setState(() => _listening = false);
+      if (mounted) setState(() => _listening = false);
       return;
     }
     final ok = await _speech.initialize();
-    if (!ok) return;
+    // 权限弹窗可停留数秒，期间用户可能已退出编辑器
+    if (!ok || !mounted) return;
     setState(() => _listening = true);
     await _speech.listen(
       localeId: 'zh_CN',
       onResult: (result) {
         final text = result.recognizedWords;
-        if (text.isNotEmpty) {
+        if (text.isNotEmpty && mounted) {
           _content.text += text;
           _controller.onChanged(
             title: _title.text, content: _content.text, extra: _moodId,
@@ -555,6 +566,20 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                             title: v, content: _content.text, extra: _moodId,
                           ),
                         ),
+                        // 写作灵感（v5.8.1）：仅新建且全空时出现，点标题填入，可换
+                        if (widget.diaryId == null &&
+                            _title.text.isEmpty &&
+                            _content.text.isEmpty)
+                          _PromptRow(
+                            onUse: (text) {
+                              setState(() => _title.text = text);
+                              _controller.onChanged(
+                                title: text,
+                                content: _content.text,
+                                extra: _moodId,
+                              );
+                            },
+                          ),
                         // 日期行：新建可补记任意过去日期，已有可改期（≤ 今天）
                         InkWell(
                           borderRadius: BorderRadius.circular(AppRadii.rMd),
@@ -641,7 +666,16 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                               items: items,
                               onPlayLive: _playLivePhoto,
                               onDelete: (m) async {
-                                await ref.read(mediaRepoProvider).remove(m.id);
+                                // 连库带文件物理删除，不可逆：先确认
+                                final ok = await showConfirmSheet(
+                                  context,
+                                  title: '删除这张媒体？',
+                                  message: '会连文件一起删除，找不回来',
+                                );
+                                if (!ok || !mounted) return;
+                                await ref
+                                    .read(mediaRepoProvider)
+                                    .remove(m.id);
                               },
                             );
                           },
@@ -653,6 +687,7 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                     listening: _listening,
                     onPickMedia: _pickMedia,
                     onToggleSpeech: _toggleSpeech,
+                    charCount: _title.text.length + _content.text.length,
                   ),
                 ],
               ),
@@ -1194,17 +1229,27 @@ class _MediaGrid extends StatelessWidget {
             Stack(
               children: [
                 GestureDetector(
-                  // 图片/实况封面点开全屏查看；实况长按播放（与详情页一致）
-                  onTap: (m.coverPath ?? m.thumbPath) == null
+                  // 图片点开全屏查看；视频/实况点按走播放器（与详情页一致，
+                  // 此前一律当图片全屏会把 96px 缩略图拉满屏且视频无法播放）
+                  onTap: m.kind == MediaKind.image
+                      ? ((m.coverPath ?? m.thumbPath) == null
+                          ? null
+                          : () => showFullscreenImage(
+                              context, m.coverPath ?? m.thumbPath!,
+                              // 独立 tag：与详情页网格的 media-$id 区分。
+                              // 编辑器与详情同在 /diary 分支 Navigator，
+                              // 同 tag 会在详情↔编辑器转场时非预期配对飞行
+                              heroTag: 'edit-media-${m.id}'))
+                      : () => onPlayLive(m),
+                  onLongPress: m.kind == MediaKind.image
                       ? null
-                      : () => showFullscreenImage(
-                          context, m.coverPath ?? m.thumbPath!),
-                  onLongPress: m.kind == MediaKind.livePhoto
-                      ? () => onPlayLive(m)
-                      : null,
+                      : () => onPlayLive(m),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(AppRadii.rMd),
-                    child: _thumb(context, m),
+                    child: Hero(
+                      tag: 'edit-media-${m.id}',
+                      child: _thumb(context, m),
+                    ),
                   ),
                 ),
                 if (m.kind == MediaKind.livePhoto)
@@ -1282,11 +1327,13 @@ class _EditorToolbar extends StatelessWidget {
     required this.listening,
     required this.onPickMedia,
     required this.onToggleSpeech,
+    required this.charCount,
   });
 
   final bool listening;
   final VoidCallback onPickMedia;
   final VoidCallback onToggleSpeech;
+  final int charCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1319,6 +1366,82 @@ class _EditorToolbar extends StatelessWidget {
           ),
           if (listening)
             Text('听写中…', style: AppType.caption.copyWith(color: p.primary)),
+          const Spacer(),
+          // 实时字数（标题+正文）
+          Text(
+            '$charCount 字',
+            style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 写作灵感行（v5.8.1）：仅新建且全空时显示。点主文案把提示填入标题，
+/// 点右侧刷新随机换一条（避开当前）。
+class _PromptRow extends StatefulWidget {
+  const _PromptRow({required this.onUse});
+
+  final ValueChanged<String> onUse;
+
+  @override
+  State<_PromptRow> createState() => _PromptRowState();
+}
+
+class _PromptRowState extends State<_PromptRow> {
+  late String _current = promptOfDay(DateTime.now());
+  final _rng = Random();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.rMd),
+              onTap: () => widget.onUse(_current),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIconsRegular.sparkle,
+                      size: 15,
+                      color: p.primary,
+                    ),
+                    const SizedBox(width: AppSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        _current,
+                        style: AppType.caption.copyWith(
+                          color: p.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '换一个',
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              setState(() => _current = nextPrompt(_current, _rng));
+            },
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.arrowsClockwise,
+              size: 15,
+              color: p.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );

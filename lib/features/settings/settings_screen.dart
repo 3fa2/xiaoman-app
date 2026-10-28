@@ -1,7 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -9,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/router.dart';
 import '../../design/tokens.dart';
+import '../../design/version.dart';
 import '../../di/providers.dart';
 import '../shared/widgets.dart';
 import 'lock_hash.dart';
@@ -30,11 +32,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _diaryRemindTime = '22:00';
   bool _autoBackup = true; // v5.3 每日自动备份
   List<FileSystemEntity> _autoBackups = const [];
+  String? _backupDirLabel; // v5.8 用户备份目录（显示用）
 
   @override
   void initState() {
     super.initState();
     _check();
+    _loadBackupDir();
+  }
+
+  Future<void> _loadBackupDir() async {
+    final provider = ref.read(autoBackupProvider);
+    final uri = await provider.backupDirUri();
+    final sync = await provider.treeSyncStatus();
+    if (!mounted) return;
+    // tree uri 形如 content://com.android.externalstorage.documents/tree/primary%3ABackup
+    // 展示最后一段可读名（primary:Backup → Backup）
+    String? label;
+    if (uri != null && uri.isNotEmpty) {
+      final marker = 'tree/';
+      final i = uri.indexOf(marker);
+      if (i != -1) {
+        final seg = Uri.decodeComponent(uri.substring(i + marker.length));
+        label = seg.split(':').last;
+        if (label.isEmpty) label = '已选目录';
+      } else {
+        label = '已选目录';
+      }
+      // 最近一次同步结果（v5.8.1：失败要可见，不能让用户以为已同步）
+      if (sync == 'fail') label = '$label（上次同步失败）';
+    }
+    setState(() => _backupDirLabel = label);
   }
 
   Future<void> _check() async {
@@ -92,6 +120,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final path = await ref.read(autoBackupProvider).runNow();
       await _check();
+      _loadBackupDir();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已备份：${path.split('/').last}')),
@@ -115,9 +144,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ok = await showConfirmSheet(
       context,
       title: '恢复「${_autoBackupLabel(f)}」？',
-      message: '当前所有日记、备忘、日程、待办会被这份备份覆盖，无法撤销',
+      message: '当前所有日记、备忘、日程、待办会被这份备份覆盖',
     );
     if (!ok || !mounted) return;
+    // 恢复前强制快照当前数据（与手动导入同一纪律）：
+    // 备份可能比当前数据旧，覆盖前留一条后悔路
+    try {
+      await ref.read(autoBackupProvider).runNow();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('恢复前备份失败，已取消恢复：$e')),
+        );
+      }
+      return;
+    }
     try {
       await ref.read(autoBackupProvider).restoreFrom(f.path);
       await _check();
@@ -157,6 +198,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
     final themeMode = ref.watch(themeModeProvider);
+    final dynamicColor = ref.watch(dynamicColorProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -183,6 +225,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ref.read(themeModeProvider.notifier).set(v.toThemeMode());
                     },
                   ),
+                // Material You（Android 12+）：骨架跟随壁纸取色，内容色板不动
+                if (dynamicColor.supported) ...[
+                  const Divider(indent: AppSpacing.cardPad),
+                  SwitchListTile(
+                    title: Text(
+                      '跟随系统取色',
+                      style: AppType.body.copyWith(color: p.onSurface),
+                    ),
+                    subtitle: Text(
+                      'Material You：界面骨架跟随壁纸配色（Android 12+），心情与日程色保持原样',
+                      style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                    ),
+                    value: dynamicColor.enabled,
+                    onChanged: (v) =>
+                        ref.read(dynamicColorProvider.notifier).setEnabled(v),
+                  ),
+                ],
               ],
             ),
           ),
@@ -359,6 +418,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 ListTile(
                   leading: PhosphorIcon(
+                    PhosphorIconsRegular.package,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '导出完整备份（含图片视频）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '数据 + 媒体文件打成一个 zip，换机不丢图；文件大，耐心等',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  onTap: () async {
+                    try {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('正在打包（含媒体），请稍候…')),
+                      );
+                      await ref.read(backupProvider).shareFullBackup();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('导出失败：$e')),
+                        );
+                      }
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: PhosphorIcon(
                     PhosphorIconsRegular.fileText,
                     color: p.onSurfaceVariant,
                   ),
@@ -386,6 +477,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: AppType.caption.copyWith(color: p.onSurfaceVariant),
                   ),
                   onTap: () => _importData(context, ref),
+                ),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.archive,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    '从完整备份恢复（含媒体）',
+                    style: AppType.body.copyWith(color: p.onSurface),
+                  ),
+                  subtitle: Text(
+                    '选「导出完整备份」生成的 zip，数据+图片视频一起回来',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  onTap: () => _importFullBackup(context, ref),
                 ),
               ],
             ),
@@ -441,6 +547,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   onTap: _runAutoBackupNow,
                 ),
+                const Divider(indent: AppSpacing.cardPad),
+                ListTile(
+                  leading: const SizedBox(width: 24),
+                  title: Text(
+                    _backupDirLabel ?? '备份到用户目录（网盘/文档）',
+                    style: AppType.body.copyWith(
+                      color: _backupDirLabel == null
+                          ? p.primary
+                          : p.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _backupDirLabel == null
+                        ? '选一个文件夹（如网盘同步目录），每日自动备份多存一份，卸载也不丢'
+                        : '每日自动备份会同步一份到这里；点此可更换目录',
+                    style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                  ),
+                  trailing: (_backupDirLabel != null)
+                      ? TextButton(
+                          onPressed: () async {
+                            await ref
+                                .read(autoBackupProvider)
+                                .setBackupDirUri(null);
+                            _loadBackupDir();
+                          },
+                          child: const Text('停用'),
+                        )
+                      : null,
+                  onTap: () async {
+                    try {
+                      final uri =
+                          await ref.read(autoBackupProvider).pickBackupDir();
+                      if (uri != null && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已开启用户目录备份')),
+                        );
+                      }
+                      _loadBackupDir();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('选择目录失败：$e')),
+                        );
+                      }
+                    }
+                  },
+                ),
                 // 最近备份可点恢复（自动备份在私有目录，SAF 选不到，必须从这里进）
                 for (final f in _autoBackups.take(3))
                   ListTile(
@@ -460,12 +613,148 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: AppSpacing.block),
           Center(
-            child: Text(
-              '小满 v5.5.1 · 本地数据，不联网',
-              style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.rSm),
+              onTap: _showChangelog,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.s8),
+                child: Text(
+                  '小满 v$appVersionName · 本地数据，不联网 · 点此看更新记录',
+                  style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                ),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 应用内更新日志（v5.8.1）：CHANGELOG.md 随包发布，轻量行解析展示。
+  /// 纯本地，不联网。
+  Future<void> _showChangelog() async {
+    String raw;
+    try {
+      raw = await rootBundle.loadString('CHANGELOG.md');
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('更新记录加载失败')),
+      );
+      return;
+    }
+    // 跳过首尾 --- 包裹的 front matter（AIGC 合规元数据，不展示给用户）
+    var lines = raw.split('\n');
+    if (lines.isNotEmpty && lines.first.trim() == '---') {
+      final end = lines.indexWhere((l) => l.trim() == '---', 1);
+      if (end != -1) lines = lines.sublist(end + 1);
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        builder: (ctx, scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+          ),
+          children: [for (final line in lines) _changelogLine(ctx, line)],
+        ),
+      ),
+    );
+  }
+
+  /// CHANGELOG 轻量解析：## → 版本标题，### → 小节，- → 列表点，其余正文
+  Widget _changelogLine(BuildContext ctx, String line) {
+    final p = Theme.of(ctx).colorScheme;
+    final t = line.trimRight();
+    if (t.startsWith('## ')) {
+      return Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.s16, bottom: AppSpacing.s4),
+        child: Text(
+          t.substring(3),
+          style: AppType.headline.copyWith(color: p.onSurface),
+        ),
+      );
+    }
+    if (t.startsWith('### ')) {
+      return Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.s8, bottom: AppSpacing.s4),
+        child: Text(
+          t.substring(4),
+          style: AppType.label.copyWith(color: p.primary),
+        ),
+      );
+    }
+    if (t.startsWith('- ') || t.startsWith('* ')) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: p.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s8),
+            Expanded(
+              child: _changelogInline(t.substring(2), p),
+            ),
+          ],
+        ),
+      );
+    }
+    if (t.startsWith('#') || t.startsWith('>') || t.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      child: _changelogInline(t, p),
+    );
+  }
+
+  /// 行内 **加粗** 与 `代码` 的轻量处理
+  Widget _changelogInline(String text, ColorScheme p) {
+    final spans = <TextSpan>[];
+    final pattern = RegExp(r'\*\*(.+?)\*\*|`(.+?)`');
+    var cursor = 0;
+    for (final m in pattern.allMatches(text)) {
+      if (m.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, m.start)));
+      }
+      final bold = m.group(1);
+      if (bold != null) {
+        spans.add(TextSpan(
+          text: bold,
+          style: AppType.caption.copyWith(color: p.onSurface, fontWeight: FontWeight.w600),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: m.group(2),
+          style: AppType.caption.copyWith(color: p.onSurface),
+        ));
+      }
+      cursor = m.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+    return SelectableText.rich(
+      TextSpan(
+        children: spans,
+        style: AppType.caption.copyWith(color: p.onSurfaceVariant),
       ),
     );
   }
@@ -592,6 +881,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('导入失败：$e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importFullBackup(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmSheet(
+      context,
+      title: '从完整备份恢复会覆盖当前内容',
+      message: '当前所有日记、备忘、日程、媒体引用会被替换，恢复前会先自动快照',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在恢复（解包媒体 + 导数据），请稍候…')),
+    );
+
+    try {
+      // 恢复前强制快照当前数据（与手动导入同一纪律）
+      try {
+        await ref.read(autoBackupProvider).runNow();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('恢复前备份失败，已取消恢复：$e')),
+          );
+        }
+        return;
+      }
+      final result = await ref.read(backupProvider).importFullBackup();
+      await ref.read(reminderWarningsProvider.notifier).syncNow();
+      await _check();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '恢复完成：${result.diaries} 篇日记、${result.notes} 条备忘、'
+              '${result.schedules} 个日程、${result.media} 个媒体文件',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('恢复失败：$e')),
         );
       }
     }

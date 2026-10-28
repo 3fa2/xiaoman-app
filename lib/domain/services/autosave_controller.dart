@@ -199,9 +199,15 @@ class AutosaveController {
     required String content,
     int? extra,
   }) async {
-    if (_status == SaveStatus.dirty || _status == SaveStatus.idle) {
-      await saveNow(title: title, content: content, extra: extra);
+    if (_status == SaveStatus.saving) {
+      // 在途保存先落地（锁排队等待）：pop 早于写库完成的话，失败时错误
+      // pill 已随页面销毁，用户会误以为已保存（P2 修复）
+      await _lock.synchronized(() async {});
     }
+    if (_disposed) return;
+    // 无条件 saveNow：整实体脏检查幂等——已保存过且无变化时是空操作；
+    // 在途保存不含最新文本（等待期间又输入过）时会补一次
+    await saveNow(title: title, content: content, extra: extra);
   }
 
   /// dispose 只做清理，不发起新写入（写入由 flush 完成）
