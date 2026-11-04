@@ -1,0 +1,764 @@
+import 'dart:convert';
+
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:xiaoman/data/db/database.dart';
+import 'package:xiaoman/data/services/backup_service.dart';
+import 'package:xiaoman/data/repositories/diary_repository.dart';
+import 'package:xiaoman/data/repositories/media_repository.dart';
+import 'package:xiaoman/data/repositories/note_repository.dart';
+import 'package:xiaoman/data/repositories/schedule_repository.dart';
+import 'package:xiaoman/data/repositories/settings_repository.dart';
+import 'package:xiaoman/data/repositories/todo_repository.dart';
+import 'package:xiaoman/domain/models/media.dart';
+import 'package:xiaoman/domain/models/schedule.dart';
+
+void main() {
+  late AppDatabase db;
+
+  setUp(() {
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+  });
+
+  tearDown(() async => db.close());
+
+  group('DiaryRepository', () {
+    test('save + getById + watchAll', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(
+        id: null, title: '第一篇', content: '内容', extra: null,
+      );
+      final diary = await repo.getById(id);
+      expect(diary, isNotNull);
+      expect(diary!.title, '第一篇');
+      final all = await repo.watchAll().first;
+      expect(all.length, 1);
+    });
+
+    test('update 走 updatedAt', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(id: null, title: 'a', content: 'b', extra: null);
+      final before = await repo.getById(id);
+      // drift 把 DateTime 存成秒级时间戳，间隔需 >1s 才能保证不等
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      await repo.save(id: id, title: 'a2', content: 'b2', extra: null);
+      final after = await repo.getById(id);
+      expect(after!.updatedAt.isAfter(before!.updatedAt), isTrue);
+    });
+
+    test('FTS5 搜索：3 字以上走 MATCH，短词回退 LIKE', () async {
+      final repo = DiaryRepositoryImpl(db);
+      await repo.save(id: null, title: '工作会议', content: '讨论季度目标', extra: null);
+      await repo.save(id: null, title: '买菜', content: '西红柿和鸡蛋', extra: null);
+
+      final r1 = await repo.search('季度目标');
+      expect(r1.length, 1);
+      expect(r1.first.title, '工作会议');
+
+      final r2 = await repo.search('鸡蛋');
+      expect(r2.length, 1);
+      expect(r2.first.title, '买菜');
+    });
+
+    test('心情预设种子 + setMood', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final moods = await repo.watchMoods().first;
+      expect(moods.length, 8);
+      final id = await repo.save(id: null, title: 't', content: 'c', extra: null);
+      await repo.setMood(diaryId: id, moodId: moods.first.id);
+      final d = await repo.getById(id);
+      expect(d!.moodId, moods.first.id);
+    });
+
+    test('日记标签：setTags 落库 + 读回 csv 转 List + 按标签搜索', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(id: null, title: '旅行', content: '去海边', extra: null);
+      // 初始无标签
+      expect((await repo.getById(id))!.tags, isEmpty);
+      // 写入标签
+      await repo.setTags(diaryId: id, tags: ['旅行', '夏天']);
+      final d = await repo.getById(id);
+      expect(d!.tags, ['旅行', '夏天']);
+      // LIKE 回退能搜到标签
+      final r = await repo.search('夏天');
+      expect(r.length, 1);
+      expect(r.first.title, '旅行');
+    });
+
+    test('自定义心情：addMood 落库 + deleteMood 解除引用 + 预设拒绝删', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final customId = await repo.addMood('充实', 210.0);
+      var moods = await repo.watchMoods().first;
+      expect(moods.length, 9);
+      final custom = moods.firstWhere((m) => m.id == customId);
+      expect(custom.isPreset, isFalse);
+      expect(custom.name, '充实');
+
+      // 用自定义心情打卡，再删除 → 日记引用置空、心情消失
+      final dId = await repo.save(id: null, title: 't', content: 'c', extra: null);
+      await repo.setMood(diaryId: dId, moodId: customId);
+      await repo.deleteMood(customId);
+      expect((await repo.getById(dId))!.moodId, isNull);
+      moods = await repo.watchMoods().first;
+      expect(moods.length, 8);
+
+      // 预设行拒绝删除（isPreset=false 条件过滤）
+      final preset = moods.first;
+      await repo.deleteMood(preset.id);
+      expect((await repo.watchMoods().first).length, 8);
+    });
+
+    test('日记本：建本 + 归属过滤 + 删除本后日记变未归本', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final nbId = await repo.saveDiaryNotebook(
+        id: null, name: '碎碎念', colorIndex: 1,
+      );
+      // 两篇日记：一篇归本、一篇不归（dateDay 取当前月，动态避免日期漂移）
+      final now = DateTime.now();
+      final ym = now.year * 100 + now.month;
+      final inBook = await repo.save(
+        id: null, title: '本内', content: 'a', extra: null,
+      );
+      final outside = await repo.save(
+        id: null, title: '本外', content: 'b', extra: null,
+      );
+      await repo.setNotebook(diaryId: inBook, notebookId: nbId);
+      // 篇数统计
+      final notebooks = await repo.watchDiaryNotebooks().first;
+      expect(notebooks.single.$1.name, '碎碎念');
+      expect(notebooks.single.$2, 1);
+      // 按本过滤
+      final inList = await repo
+          .watchByMonthIn(ym, nbId)
+          .first;
+      expect(inList.map((d) => d.title), ['本内']);
+      // 未归本过滤（-1）
+      final outList = await repo.watchByMonthIn(ym, -1).first;
+      expect(outList.map((d) => d.title), ['本外']);
+      // 全部视图两篇都有
+      expect((await repo.watchByMonthIn(ym, null).first).length, 2);
+      // 删除本：日记保留变未归本
+      await repo.deleteDiaryNotebook(nbId);
+      expect((await repo.watchDiaryNotebooks().first).isEmpty, isTrue);
+      final d = await repo.getById(inBook);
+      expect(d!.notebookId, isNull);
+      // 防止未使用变量警告
+      expect(outside, isPositive);
+    });
+  });
+
+  group('NoteRepository', () {
+    test('notebook + note + todo 全链路', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: '灵感', colorIndex: 2);
+      final notebooks = await repo.watchNotebooks().first;
+      expect(notebooks.length, 1);
+      expect(notebooks.first.colorIndex, 2);
+
+      final noteId = await repo.saveNote(
+        id: null,
+        notebookId: notebooks.first.id,
+        title: '清单',
+        content: '- [ ] 买菜',
+        tags: ['生活'],
+        pinned: false,
+      );
+      final notes = await repo.watchNotes(notebooks.first.id).first;
+      expect(notes.length, 1);
+      expect(notes.first.tags, ['生活']);
+
+      await repo.addTodo(noteId: noteId, text: '买咖啡');
+      final todos = await repo.watchTodos(noteId).first;
+      expect(todos.length, 1);
+      await repo.toggleTodo(todoId: todos.first.id, done: true);
+      final todos2 = await repo.watchTodos(noteId).first;
+      expect(todos2.first.done, isTrue);
+    });
+
+    test('删除笔记本级联：笔记软删除进回收站', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'A', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      final noteId = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'x', content: 'y',
+        tags: [], pinned: false,
+      );
+      await repo.addTodo(noteId: noteId, text: 't1');
+      await repo.deleteNotebook(nbs.first.id);
+      expect((await repo.watchNotebooks().first), isEmpty);
+      // 列表与搜索不再出现
+      expect((await repo.watchNotes(nbs.first.id).first), isEmpty);
+      expect(await repo.searchNotes('y'), isEmpty);
+      // 但按 id 仍可查（回收站数据源），deletedAt 已标记
+      final n = await repo.getNoteById(noteId);
+      expect(n, isNotNull);
+      expect(n!.deletedAt, isNotNull);
+      expect((await repo.watchDeletedNotes().first).length, 1);
+    });
+
+    test('备忘回收站：恢复（原笔记本已删 → 归到第一个本）/ 彻底删除', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'B1', colorIndex: 0);
+      await repo.saveNotebook(id: null, name: 'B2', colorIndex: 1);
+      final nbs = await repo.watchNotebooks().first;
+      final noteId = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'x', content: 'y',
+        tags: [], pinned: false,
+      );
+      await repo.deleteNote(noteId);
+      expect((await repo.watchNotes(nbs.first.id).first), isEmpty);
+      // 恢复：原笔记本还在 → 原地恢复
+      await repo.restoreNote(noteId);
+      expect((await repo.getNoteById(noteId))!.deletedAt, isNull);
+      expect((await repo.getNoteById(noteId))!.notebookId, nbs.first.id);
+      // 原笔记本删掉后再恢复 → 归到剩下的第一个本
+      await repo.deleteNote(noteId);
+      await repo.deleteNotebook(nbs.first.id);
+      await repo.restoreNote(noteId);
+      final restored = await repo.getNoteById(noteId);
+      expect(restored!.deletedAt, isNull);
+      final nbIds = (await repo.watchNotebooks().first).map((nb) => nb.id);
+      expect(nbIds, contains(restored.notebookId));
+      // 彻底删除：清单子项一并清
+      await repo.deleteNote(noteId);
+      await repo.purgeNote(noteId);
+      expect(await repo.getNoteById(noteId), isNull);
+    });
+
+    test('deletedNotesBefore：只返回超过截止时间的已删笔记', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'C', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      final id = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'x', content: 'y',
+        tags: [], pinned: false,
+      );
+      await repo.deleteNote(id);
+      expect(
+        await repo.deletedNotesBefore(
+          DateTime.now().subtract(const Duration(days: 30)),
+        ),
+        isEmpty,
+      );
+      expect(
+        await repo.deletedNotesBefore(DateTime.now().add(const Duration(days: 1))),
+        [id],
+      );
+    });
+
+    test('FTS5 笔记搜索', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'B', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: '量化策略',
+        content: '动量因子回测', tags: [], pinned: false,
+      );
+      final r = await repo.searchNotes('动量因子');
+      expect(r.length, 1);
+    });
+
+    test('自动保存通道（EditorRepository.save）不清空 tags/pinned', () async {
+      final repo = NoteRepositoryImpl(db);
+      await repo.saveNotebook(id: null, name: 'C', colorIndex: 0);
+      final nbs = await repo.watchNotebooks().first;
+      final id = await repo.saveNote(
+        id: null, notebookId: nbs.first.id, title: 'a', content: 'b',
+        tags: ['重要'], pinned: true,
+      );
+      // 模拟打字触发的自动保存（只传标题正文）
+      await repo.save(id: id, title: 'a2', content: 'b2', extra: nbs.first.id);
+      final note = await repo.getNoteById(id);
+      expect(note!.title, 'a2');
+      expect(note.tags, ['重要']);
+      expect(note.pinned, isTrue);
+    });
+  });
+
+  group('ScheduleRepository', () {
+    test('saveInstance + watchDay + setStatus', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      final id = await repo.saveInstance(
+        id: null, templateId: null, dateDay: 20260919,
+        startMinutes: 540, durationMinutes: 90,
+        title: '晨会', description: '', colorIndex: 1,
+        detachOnEdit: false, remindMinutesBefore: 15,
+      );
+      final day = await repo.watchDay(20260919).first;
+      expect(day.length, 1);
+      expect(day.first.remindAt, isNotNull);
+
+      await repo.setStatus(id: id, status: BlockStatus.done);
+      final day2 = await repo.watchDay(20260919).first;
+      expect(day2.first.status, BlockStatus.done);
+    });
+
+    test('regenerate 幂等 + skip-on-conflict 落库', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      await repo.saveTemplate(
+        ScheduleTemplate(
+          id: 0, title: '每日站会', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 540,
+          durationMinutes: 30, remindMinutesBefore: 0, enabled: true,
+          createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1),
+        ),
+        isNew: true,
+      );
+      final today = DateDay.of(DateTime.now());
+      // 生成窗口 = 今天起 14 天；查询窗口取前 3 天交集
+      final round1 =
+          await repo.watchRange(today, DateDay.addDays(today, 2)).first;
+      expect(round1.length, 3);
+
+      // 再跑一遍：不重复（幂等）
+      await repo.regenerate();
+      final round2 =
+          await repo.watchRange(today, DateDay.addDays(today, 2)).first;
+      expect(round2.length, 3);
+    });
+
+    test('regenerate 生成的模板实例带 remindAt（模板提醒生效）', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      await repo.saveTemplate(
+        ScheduleTemplate(
+          id: 0, title: '带提醒的重复', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 540,
+          durationMinutes: 30, remindMinutesBefore: 10, enabled: true,
+          createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1),
+        ),
+        isNew: true,
+      );
+      final today = DateDay.of(DateTime.now());
+      final instances =
+          await repo.watchRange(today, DateDay.addDays(today, 1)).first;
+      expect(instances.length, 2);
+      expect(instances.first.remindAt, isNotNull);
+      // remindAt = 当天 00:00 + (540 - 10) 分钟 = 08:50
+      final day = DateDay.toDateTime(instances.first.dateDay);
+      expect(
+        instances.first.remindAt,
+        DateTime(day.year, day.month, day.day, 8, 50),
+      );
+    });
+
+    test('skipTemplateOccurrence 写 exdates 并删该次实例', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      final tid = await repo.saveTemplate(
+        ScheduleTemplate(
+          id: 0, title: '跑步', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 420,
+          durationMinutes: 60, remindMinutesBefore: 0, enabled: true,
+          createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1),
+        ),
+        isNew: true,
+      );
+      final tpl = await repo.getTemplate(tid);
+      final tomorrow = DateDay.addDays(
+        DateDay.of(DateTime.now()), 1,
+      );
+      await repo.skipTemplateOccurrence(template: tpl!, dateDay: tomorrow);
+      final tpl2 = await repo.getTemplate(tid);
+      expect(tpl2!.exdates, contains(tomorrow.toString()));
+      final day = await repo.watchDay(tomorrow).first;
+      expect(day, isEmpty);
+    });
+
+    test('detach 实例在模板更新后保留', () async {
+      final repo = ScheduleRepositoryImpl(db);
+      final tid = await repo.saveTemplate(
+        ScheduleTemplate(
+          id: 0, title: '锻炼', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 420,
+          durationMinutes: 60, remindMinutesBefore: 0, enabled: true,
+          createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1),
+        ),
+        isNew: true,
+      );
+      final tpl = await repo.getTemplate(tid);
+      final tomorrow = DateDay.addDays(DateDay.of(DateTime.now()), 1);
+      final instances = await repo.watchDay(tomorrow).first;
+      final instId = instances.first.id;
+      // 手动编辑 → detach
+      await repo.saveInstance(
+        id: instId, templateId: tid, dateDay: tomorrow,
+        startMinutes: 600, durationMinutes: 60,
+        title: '锻炼（改）', description: '', colorIndex: 0,
+        detachOnEdit: true, remindMinutesBefore: 0,
+      );
+      // 模板更新（改时间）
+      await repo.saveTemplate(
+        ScheduleTemplate(
+          id: tid, title: '锻炼', description: '', colorIndex: 0,
+          rrule: 'FREQ=DAILY', exdates: '', startMinutes: 500,
+          durationMinutes: 60, remindMinutesBefore: 0, enabled: true,
+          createdAt: tpl!.createdAt, updatedAt: DateTime.now(),
+        ),
+        isNew: false,
+      );
+      final after = await repo.watchDay(tomorrow).first;
+      final detached = after.where((e) => e.id == instId).toList();
+      expect(detached, isNotEmpty); // 分离实例没被删
+      expect(detached.first.startMinutes, 600); // 时间还是用户改的
+      expect(detached.first.detached, isTrue);
+    });
+
+    test('补记：save 指定 dateDay + 移动已有日记日期', () async {
+      final repo = DiaryRepositoryImpl(db);
+      // 补记：创建时指定过去日期
+      final id = await repo.save(
+        id: null, title: '补记', content: 'x', extra: null, dateDay: 20260101,
+      );
+      expect((await repo.watchByDate(20260101).first).length, 1);
+      // 改期：更新带 dateDay → 移动到新日期，原日期清空
+      await repo.save(
+        id: id, title: '补记', content: 'x', extra: null, dateDay: 20260102,
+      );
+      expect((await repo.watchByDate(20260101).first), isEmpty);
+      final moved = await repo.getById(id);
+      expect(moved!.dateDay, 20260102);
+      // 缺省 dateDay 的自动保存不改日期
+      await repo.save(id: id, title: '补记2', content: 'y', extra: null);
+      expect((await repo.getById(id))!.dateDay, 20260102);
+    });
+  });
+
+  group('RecycleBin（v5.3 软删除）', () {
+    test('软删除 → 回收站 → 恢复 / 彻底删除；列表与搜索不再出现', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(
+        id: null, title: '待删', content: '独特内容xyz', extra: null,
+      );
+      expect((await repo.watchAll().first).length, 1);
+      await repo.delete(id); // 软删除
+      expect((await repo.watchAll().first), isEmpty);
+      expect((await repo.getById(id))!.deletedAt, isNotNull);
+      expect((await repo.watchDeleted().first).length, 1);
+      // 搜索不再出现
+      expect(await repo.search('独特内容xyz'), isEmpty);
+      // 恢复
+      await repo.restoreDiary(id);
+      expect((await repo.watchAll().first).length, 1);
+      expect((await repo.getById(id))!.deletedAt, isNull);
+      // 彻底删除
+      await repo.delete(id);
+      await repo.purgeDiary(id);
+      expect(await repo.getById(id), isNull);
+    });
+
+    test('deletedBefore：只返回超过截止时间的已删条目', () async {
+      final repo = DiaryRepositoryImpl(db);
+      final id = await repo.save(
+        id: null, title: 'x', content: 'y', extra: null,
+      );
+      await repo.delete(id);
+      // 刚删 1 分钟 → 以 30 天前为界的过期查询查不到
+      expect(
+        await repo.deletedBefore(
+          DateTime.now().subtract(const Duration(days: 30)),
+        ),
+        isEmpty,
+      );
+      // cutoff 在未来 → 查得到
+      expect(
+        await repo.deletedBefore(DateTime.now().add(const Duration(days: 1))),
+        [id],
+      );
+    });
+  });
+
+  group('TodoRepeat（v5.3 循环待办）', () {
+    test('每天循环：勾掉 → 滚到明天且不留在已完成', () async {
+      final repo = TodoRepositoryImpl(db);
+      final today = DateDay.of(DateTime.now());
+      final id = await repo.add(title: '吃药', dueDay: today, repeat: 'daily');
+      await repo.toggle(id: id, done: true);
+      final t = (await repo.watchAll().first).first;
+      expect(t.done, isFalse);
+      expect(t.dueDay, DateDay.addDays(today, 1));
+    });
+
+    test('每月循环：1月31日 → 2月28日（月末钳制）', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '交房租', dueDay: 20260131, repeat: 'monthly');
+      await repo.toggle(id: id, done: true);
+      final t = (await repo.watchAll().first).first;
+      expect(t.done, isFalse);
+      expect(t.dueDay, 20260228);
+    });
+
+    test('每周循环：+7 天；无截止日的循环待办勾掉按普通完成处理', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '周报', dueDay: 20260105, repeat: 'weekly');
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).first.dueDay, 20260112);
+      // 无截止日：repeat 不生效，正常完成
+      final id2 = await repo.add(title: '无期限的', repeat: 'daily');
+      await repo.toggle(id: id2, done: true);
+      expect((await repo.watchAll().first).where((t) => t.id == id2).first.done,
+          isTrue);
+    });
+
+    test('非循环待办：勾掉保持完成态', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '一次性', dueDay: 20260101);
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).first.done, isTrue);
+    });
+
+    test('删除已完成待办：列表移除', () async {
+      final repo = TodoRepositoryImpl(db);
+      final id = await repo.add(title: '会删掉的', dueDay: 20260101);
+      await repo.toggle(id: id, done: true);
+      expect((await repo.watchAll().first).length, 1);
+      await repo.delete(id);
+      expect((await repo.watchAll().first), isEmpty);
+    });
+  });
+
+  group('Markdown（v5.3 导出）', () {
+    test('buildMarkdownString：含标题/月份节/心情/标签，排除回收站', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      final moods = await diaryRepo.watchMoods().first;
+      await diaryRepo.save(
+        id: null, title: '有心情的', content: '正文内容',
+        extra: moods.first.id, dateDay: 20260915,
+      );
+      final d2 = await diaryRepo.save(
+        id: null, title: '带标签的', content: 'x', extra: null, dateDay: 20260920,
+      );
+      await diaryRepo.setTags(diaryId: d2, tags: ['工作']);
+      final d3 = await diaryRepo.save(
+        id: null, title: '被删的', content: 'y', extra: null, dateDay: 20260925,
+      );
+      await diaryRepo.delete(d3);
+
+      final md = await BackupServiceImpl(db).buildMarkdownString();
+      expect(md, contains('# 小满 · 日记导出'));
+      expect(md, contains('## 2026 年 9 月'));
+      expect(md, contains('有心情的'));
+      expect(md, contains('心情：'));
+      expect(md, contains('标签：工作'));
+      expect(md, isNot(contains('被删的')));
+    });
+  });
+
+  group('Draft', () {
+    test('save + find + clear', () async {
+      final repo = DiaryRepositoryImpl(db);
+      await repo.saveDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+        payload: '{"title":"x"}',
+      );
+      final d = await repo.findDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+      );
+      expect(d, isNotNull);
+      expect(d!.payload, contains('title'));
+      await repo.saveDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+        payload: '{"title":"y"}',
+      );
+      final d2 = await repo.findDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+      );
+      expect(d2!.payload, contains('"title":"y"'));
+      await repo.clearDraft(ownerType: MediaOwner.diary, ownerId: -1);
+      final d3 = await repo.findDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+      );
+      expect(d3, isNull);
+    });
+  });
+
+  group('MediaRepository', () {
+    test('attach + watchFor + remove', () async {
+      final repo = MediaRepositoryImpl(db);
+      final id = await repo.attach(
+        MediaItem(
+          id: 0, ownerType: MediaOwner.diary, ownerId: 1,
+          kind: MediaKind.livePhoto, coverPath: '/tmp/a.jpg',
+          videoPath: '/tmp/a.mp4', thumbPath: null, sortOrder: 0,
+          width: null, height: null, durationMs: null,
+          createdAt: DateTime(2026, 1, 1),
+        ),
+      );
+      final list = await repo.watchFor(MediaOwner.diary, 1).first;
+      expect(list.length, 1);
+      expect(list.first.kind, MediaKind.livePhoto);
+      await repo.remove(id);
+      expect(await repo.watchFor(MediaOwner.diary, 1).first, isEmpty);
+    });
+  });
+
+  group('Settings', () {
+    test('get/set roundtrip', () async {
+      final impl = SettingsRepositoryImpl(db);
+      await impl.set('theme_mode', 'dark');
+      expect(await impl.get('theme_mode'), 'dark');
+    });
+  });
+
+  group('BackupService 导入', () {
+    /// 构造与 exportAllJson 输出同构的 JSON（不经文件系统，测试可直接驱动）
+    Future<String> buildExportLikeJson() async {
+      final data = <String, dynamic>{
+        'schemaVersion': db.schemaVersion,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'diaries': (await db.select(db.diaries).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'diaryNotebooks': (await db.select(db.diaryNotebooks).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'moods': (await db.select(db.moods).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'mediaItems': (await db.select(db.mediaItems).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'notebooks': (await db.select(db.notebooks).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'notes': (await db.select(db.notes).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'todoItems': (await db.select(db.todoItems).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'scheduleTemplates': (await db.select(db.scheduleTemplates).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'scheduleInstances': (await db.select(db.scheduleInstances).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'drafts': (await db.select(db.drafts).get())
+            .map((r) => r.toJson())
+            .toList(),
+        'settings': (await db.select(db.settings).get())
+            .map((r) => r.toJson())
+            .toList(),
+      };
+      return jsonEncode(data);
+    }
+
+    test('roundtrip：导出结构 JSON → 覆盖导入 → 数据完整 + FTS 可搜', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      final noteRepo = NoteRepositoryImpl(db);
+      final schedRepo = ScheduleRepositoryImpl(db);
+      final settingsRepo = SettingsRepositoryImpl(db);
+
+      // 1. 建全量数据：日记(本+心情+标签)、笔记(标签+置顶+待办)、日程、草稿、设置
+      final nbId = await diaryRepo.saveDiaryNotebook(
+        id: null, name: '碎碎念', colorIndex: 1,
+      );
+      final dId = await diaryRepo.save(
+        id: null, title: '旅行日记', content: '海边看日出', extra: null,
+      );
+      final moods = await diaryRepo.watchMoods().first;
+      await diaryRepo.setMood(diaryId: dId, moodId: moods.first.id);
+      await diaryRepo.setNotebook(diaryId: dId, notebookId: nbId);
+      await diaryRepo.setTags(diaryId: dId, tags: ['旅行']);
+
+      await noteRepo.saveNotebook(id: null, name: '灵感', colorIndex: 2);
+      final nbs = await noteRepo.watchNotebooks().first;
+      final nId = await noteRepo.saveNote(
+        id: null, notebookId: nbs.first.id, title: '量化笔记',
+        content: '动量因子回测', tags: ['投资'], pinned: true,
+      );
+      await noteRepo.addTodo(noteId: nId, text: '复测2023数据');
+
+      await schedRepo.saveInstance(
+        id: null, templateId: null, dateDay: 20260920,
+        startMinutes: 540, durationMinutes: 90,
+        title: '晨会', description: '', colorIndex: 1,
+        detachOnEdit: false, remindMinutesBefore: 15,
+      );
+      await settingsRepo.set('theme_mode', 'dark');
+      await diaryRepo.saveDraft(
+        ownerType: MediaOwner.diary, ownerId: -1, payload: '{"title":"x"}',
+      );
+
+      // 2. 导出同构 JSON
+      final json = await buildExportLikeJson();
+
+      // 3. 弄脏库：导入后这些应该全部消失（覆盖恢复语义）
+      await diaryRepo.save(
+        id: null, title: '脏数据', content: '会被覆盖掉', extra: null,
+      );
+      await noteRepo.saveNotebook(id: null, name: '脏本', colorIndex: 0);
+      await schedRepo.saveInstance(
+        id: null, templateId: null, dateDay: 20260921,
+        startMinutes: 600, durationMinutes: 30,
+        title: '脏日程', description: '', colorIndex: 0,
+        detachOnEdit: false, remindMinutesBefore: 0,
+      );
+
+      // 4. 导入
+      final backup = BackupServiceImpl(db);
+      final stat = await backup.importFromJsonString(json);
+      expect(stat.diaries, 1);
+      expect(stat.notes, 1);
+      expect(stat.schedules, 1);
+
+      // 5. 日记回来：标题/标签/心情/归属本
+      final d = await diaryRepo.getById(dId);
+      expect(d!.title, '旅行日记');
+      expect(d.tags, ['旅行']);
+      expect(d.moodId, moods.first.id);
+      expect(d.notebookId, nbId);
+
+      // 6. 脏数据被清
+      final titles = (await db.select(db.diaries).get())
+          .map((r) => r.title)
+          .toList();
+      expect(titles, isNot(contains('脏数据')));
+      expect(
+        (await db.select(db.scheduleInstances).get())
+            .map((r) => r.title)
+            .toList(),
+        isNot(contains('脏日程')),
+      );
+
+      // 7. FTS rebuild 生效：清表后触发器不回填，全靠 rebuild 找回索引
+      expect((await db.searchDiaries('海边看日出')).length, 1);
+      expect((await db.searchNotes('动量因子')).length, 1);
+
+      // 8. 笔记回来：标签/置顶/待办
+      final note = await noteRepo.getNoteById(nId);
+      expect(note!.title, '量化笔记');
+      expect(note.tags, ['投资']);
+      expect(note.pinned, isTrue);
+      final todos = await noteRepo.watchTodos(nId).first;
+      expect(todos.length, 1);
+      expect(todos.first.text, '复测2023数据');
+
+      // 9. 日程/心情种子/草稿/设置都回来
+      final day = await schedRepo.watchDay(20260920).first;
+      expect(day.length, 1);
+      expect(day.first.title, '晨会');
+      expect((await diaryRepo.watchMoods().first).length, 8);
+      final draft = await diaryRepo.findDraft(
+        ownerType: MediaOwner.diary, ownerId: -1,
+      );
+      expect(draft, isNotNull);
+      expect(await settingsRepo.get('theme_mode'), 'dark');
+    });
+
+    test('空 JSON（缺表键）→ 清空不炸 + 心情种子自动补回', () async {
+      final diaryRepo = DiaryRepositoryImpl(db);
+      await diaryRepo.save(
+        id: null, title: '旧数据', content: 'x', extra: null,
+      );
+      final backup = BackupServiceImpl(db);
+      final stat = await backup.importFromJsonString('{}');
+      expect(stat.diaries, 0);
+      expect(stat.notes, 0);
+      expect(stat.schedules, 0);
+      expect(await db.select(db.diaries).get(), isEmpty);
+      // moods 不在 JSON 里 → 种子自动补回 8 个，心情打卡不至于没得选
+      expect((await diaryRepo.watchMoods().first).length, 8);
+      // FTS rebuild 对空表不炸
+      expect(await db.searchDiaries('随便搜'), isEmpty);
+    });
+  });
+}

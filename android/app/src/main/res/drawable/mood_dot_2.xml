@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 心情点 2 · 平静（HSL 190/0.40/0.62，对齐 MoodPalette.presets） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#77B8C5" />
+    <size android:width="30dp" android:height="30dp" />
+</shape>

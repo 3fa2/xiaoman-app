@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 待办小组件配色（深色）：与 darkPalette 一致 -->
+    <color name="widget_bg">#1E2226</color>
+    <color name="widget_item_bg">#24282D</color>
+    <color name="widget_ink">#E7E9EB</color>
+    <color name="widget_ink_soft">#A3A9B0</color>
+    <color name="widget_primary">#7FA8C9</color>
+    <color name="widget_add_fg">#0E1A24</color>
+    <color name="widget_ring">#767C84</color>
+    <!-- v5.8：深色侧同步补齐新色（hairline 深档 / danger 提亮 / today 跟夜间 primary） -->
+    <color name="widget_item_stroke">#2B3036</color>
+    <color name="widget_danger">#D08A80</color>
+    <color name="widget_today_fg">#7FA8C9</color>
+</resources>

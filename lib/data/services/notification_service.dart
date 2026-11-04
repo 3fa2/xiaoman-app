@@ -1,0 +1,304 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+
+import '../../domain/models/schedule.dart';
+import '../../domain/models/todo.dart';
+import '../../domain/repositories/repositories.dart';
+
+/// 日程提醒服务（P0-2）。
+///
+/// 三层可靠性设计：
+/// 1. 插件层：zonedSchedule 排精确闹钟（exactAllowWhileIdle）
+/// 2. 原生持久层：MethodChannel 把计划同步到 Android SharedPreferences，
+///    BootReceiver 在 重启/更新/时间变更/时区变更/日期变更 后重建
+/// 3. App 启动层：syncAll() 重建全部未来提醒（uhabits #1509 社区公认兜底）
+///
+/// 失败必须可见：返回 warnings 列表给 UI 展示"提醒未生效"，不静默。
+class NotificationService {
+  NotificationService._();
+
+  static final NotificationService instance = NotificationService._();
+
+  /// v5.0：待办提醒——通知 id 偏移（避免与日程实例 id 撞号），
+  /// 新渠道 trinity_todo（trinity_schedule 渠道红线不动），
+  /// 待办只有截止日没有时刻，约定当天 09:00 提醒（remindBefore 分钟提前）
+  static const _todoIdBase = 1000000;
+  static const _todoChannel = 'trinity_todo';
+  static const _todoRemindHour = 9;
+
+  /// v5.3：每日写日记提醒（固定 id 双层共用防重通知；
+  /// 插件层 matchDateTimeComponents 每天重复，原生层 repeatDaily 自滚下一天）
+  static const _diaryRemindId = 2000000;
+  static const _diaryChannel = 'trinity_diary';
+  static const _diaryRemindTitle = '该写今天的日记了';
+  static const _diaryRemindBody = '记两笔，日子就留下了';
+
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  static const _channel = MethodChannel('trinity/alarms');
+  bool _inited = false;
+
+  Future<void> init() async {
+    if (_inited) return;
+    // 时区跟随系统，不写死 Asia/Shanghai
+    tzdata.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation(_systemTimeZoneId()));
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _plugin.initialize(
+      const InitializationSettings(android: android),
+    );
+    _inited = true;
+  }
+
+  /// 读系统时区 id。中国大陆用 Asia/Shanghai；其他区域按 offset 匹配时区库。
+  static String _systemTimeZoneId() {
+    final now = DateTime.now();
+    final offsetMinutes = now.timeZoneOffset.inMinutes;
+    if (offsetMinutes == 480) return 'Asia/Shanghai';
+    for (final name in tz.timeZoneDatabase.locations.keys) {
+      final loc = tz.getLocation(name);
+      final t = tz.TZDateTime.from(now, loc);
+      if (t.timeZoneOffset == now.timeZoneOffset) return name;
+    }
+    return 'UTC';
+  }
+
+  Future<bool> canExact() async {
+    try {
+      return await _channel.invokeMethod<bool>('canExact') ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// 重建未来 14 天全部提醒（日程 + 待办 + 每日写日记提醒）。
+  /// 返回警告（UI 显示"提醒未生效"）。
+  /// v5.8 打卡文案：[diaryRemind] 开启时传 [diaryWrittenToday]（今天是否已写）
+  /// 与 [diaryStreak]（到昨天为止的连续天数，-1=未知），通知文案随之变化。
+  Future<List<String>> syncAll(
+    ScheduleRepository repo, {
+    List<Todo>? todos,
+    bool diaryRemind = false,
+    int diaryRemindMinutes = 22 * 60,
+    bool diaryWrittenToday = false,
+    int diaryStreak = -1,
+  }) async {
+    final warnings = <String>[];
+    if (!_inited) await init();
+
+    // 先清空插件层已排定的全部通知：删除/跳过的日程到点不再弹（幽灵通知）
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {
+      // 初次安装无已排通知时个别设备抛异常，忽略
+    }
+
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day);
+    final to = from.add(const Duration(days: 15));
+    final fromDay = from.year * 10000 + from.month * 100 + from.day;
+    final toDay = to.year * 10000 + to.month * 100 + to.day;
+
+    final instances = await _rangeInstances(repo, fromDay, toDay);
+    final pending = instances
+        .where(
+          (i) =>
+              i.status == BlockStatus.pending &&
+              i.remindAt != null &&
+              i.remindAt!.isAfter(now),
+        )
+        .toList()
+      ..sort((a, b) => a.remindAt!.compareTo(b.remindAt!));
+
+    final exactOk = await canExact();
+    if (!exactOk) {
+      warnings.add('未授予精确闹钟权限，提醒可能延迟（设置页可跳转授权）');
+    }
+
+    // 插件层 + 原生持久层双写
+    final nativePayloads = <Map<String, dynamic>>[];
+    for (final i in pending.take(64)) {
+      final epochMs = i.remindAt!.millisecondsSinceEpoch;
+      try {
+        await _plugin.zonedSchedule(
+          i.id,
+          i.title,
+          '${_hm(i.startMinutes)} · ${i.title}',
+          tz.TZDateTime.from(
+            DateTime.fromMillisecondsSinceEpoch(epochMs),
+            tz.local,
+          ),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'trinity_schedule',
+              '日程提醒',
+              channelDescription: '日程时间块提醒',
+              importance: Importance.max,
+              priority: Priority.high,
+              fullScreenIntent: true,
+            ),
+          ),
+          androidScheduleMode: exactOk
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              // 降级：宁可延迟不可崩溃；UI 明确提示
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (e) {
+        warnings.add('「${i.title}」提醒排定失败：$e');
+      }
+      nativePayloads.add({
+        'id': i.id,
+        'title': i.title,
+        'body': '${_hm(i.startMinutes)} · ${i.title}',
+        'epochMs': epochMs,
+      });
+    }
+
+    // v5.0：待办提醒（截止日 09:00 - remindBefore，未完成的才排）。
+    // 在 setAll 之前 append：日程 + 待办一次性合并下发，原生层整体覆盖重建。
+    final todoList = (todos ?? const <Todo>[])
+        .where((t) => !t.done && t.dueDay != null)
+        .toList();
+    for (final t in todoList.take(32)) {
+      final day = t.dueDay!;
+      final due = DateTime(
+        day ~/ 10000, (day ~/ 100) % 100, day % 100, _todoRemindHour,
+      );
+      final at = due.subtract(Duration(minutes: t.remindBefore ?? 0));
+      if (!at.isAfter(now)) continue;
+      final nid = _todoIdBase + t.id;
+      try {
+        await _plugin.zonedSchedule(
+          nid,
+          t.title,
+          '待办到期提醒',
+          tz.TZDateTime.from(at, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'trinity_todo', '待办提醒',
+              channelDescription: '待办截止日提醒',
+              importance: Importance.max,
+              priority: Priority.high,
+              fullScreenIntent: true,
+            ),
+          ),
+          androidScheduleMode: exactOk
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (e) {
+        warnings.add('「${t.title}」待办提醒排定失败：$e');
+      }
+      nativePayloads.add({
+        'id': nid,
+        'title': t.title,
+        'body': '待办到期提醒',
+        'epochMs': at.millisecondsSinceEpoch,
+        'channel': _todoChannel,
+      });
+    }
+
+    // v5.3：每日写日记提醒（v5.8 文案随打卡状态变化）
+    if (diaryRemind) {
+      final now2 = DateTime.now();
+      var at = DateTime(
+        now2.year, now2.month, now2.day,
+        diaryRemindMinutes ~/ 60, diaryRemindMinutes % 60,
+      );
+      if (!at.isAfter(now2)) at = at.add(const Duration(days: 1));
+      // 打卡文案：已写→鼓励保持；未写且连续 ≥2 天→"别断更"；否则默认
+      final (title, body) = !diaryWrittenToday && diaryStreak >= 2
+          ? ('打卡第 ${diaryStreak + 1} 天等你', '已连续 $diaryStreak 天，别断更')
+          : (diaryWrittenToday ? '今天的日记已记录' : _diaryRemindTitle,
+              diaryWrittenToday ? '保持得很好，明天见' : _diaryRemindBody);
+      try {
+        await _plugin.zonedSchedule(
+          _diaryRemindId,
+          title,
+          body,
+          tz.TZDateTime.from(at, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _diaryChannel, '写日记提醒',
+              channelDescription: '每日固定时间提醒写日记',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+          androidScheduleMode: exactOk
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+        );
+      } catch (e) {
+        warnings.add('写日记提醒排定失败：$e');
+      }
+      nativePayloads.add({
+        'id': _diaryRemindId,
+        'title': title,
+        'body': body,
+        'epochMs': at.millisecondsSinceEpoch,
+        'channel': _diaryChannel,
+        'repeatDaily': true,
+        'payload': 'diary',
+      });
+    }
+
+    try {
+      await _channel.invokeMethod('setAll', {'alarms': nativePayloads});
+    } on PlatformException catch (e) {
+      warnings.add('提醒持久化失败（重启后不会自动恢复）：${e.code}');
+    }
+    return warnings;
+  }
+
+  Future<List<ScheduleInstance>> _rangeInstances(
+    ScheduleRepository repo,
+    int fromDay,
+    int toDay,
+  ) async {
+    // repo 是 Stream 接口，这里用一次性查询封装
+    final completer = Completer<List<ScheduleInstance>>();
+    late StreamSubscription sub;
+    sub = repo.watchRange(fromDay, toDay).listen((list) {
+      if (!completer.isCompleted) completer.complete(list);
+    });
+    final result = await completer.future;
+    await sub.cancel();
+    return result;
+  }
+
+  static String _hm(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, '0');
+    final m = (minutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  /// 立即发一条测试通知（设置页验证通知渠道）
+  Future<void> testNow() async {
+    if (!_inited) await init();
+    await _plugin.show(
+      999999,
+      '小满 · 测试提醒',
+      '如果你看到这条通知，说明日程提醒渠道正常',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'trinity_schedule', '日程提醒',
+          channelDescription: '日程时间块提醒',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
+}

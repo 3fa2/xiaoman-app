@@ -1,0 +1,117 @@
+/// 领域模型 · 日程（模板 / 实例分离，纯 Dart）
+enum BlockStatus { pending, done, skipped }
+
+/// 重复模板（规则 + 时间槽）。rrule 为 RFC5545 子集：
+/// FREQ=DAILY/WEEKLY/MONTHLY/YEARLY (+INTERVAL) (+BYDAY / BYSETPOS / BYMONTHDAY)
+class ScheduleTemplate {
+  final int id;
+  final String title;
+  final String description;
+  final int colorIndex;
+  final String? rrule;
+  final String exdates; // csv yyyymmdd，跳过某天（EXDATE，可撤销）
+  final int? startDate; // yyyymmdd：单次/时间段的起始日（v4.8）
+  final int? endDate; // yyyymmdd：时间段结束日（null=单次或无限重复）
+  final int startMinutes;
+  final int durationMinutes;
+  final int remindMinutesBefore;
+  final bool enabled;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const ScheduleTemplate({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.colorIndex,
+    required this.rrule,
+    required this.exdates,
+    this.startDate,
+    this.endDate,
+    required this.startMinutes,
+    required this.durationMinutes,
+    required this.remindMinutesBefore,
+    required this.enabled,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  /// 局部更新（如启用/禁用开关）：字段拷贝漏一列就会在 saveTemplate 的
+  /// 全量覆写下清库值，必须走 copyWith 防漏。
+  ScheduleTemplate copyWith({
+    String? title,
+    String? description,
+    int? colorIndex,
+    String? rrule,
+    bool? enabled,
+  }) =>
+      ScheduleTemplate(
+        id: id,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        colorIndex: colorIndex ?? this.colorIndex,
+        rrule: rrule ?? this.rrule,
+        exdates: exdates,
+        startDate: startDate,
+        endDate: endDate,
+        startMinutes: startMinutes,
+        durationMinutes: durationMinutes,
+        remindMinutesBefore: remindMinutesBefore,
+        enabled: enabled ?? this.enabled,
+        createdAt: createdAt,
+        updatedAt: DateTime.now(),
+      );
+}
+
+/// 具体某天的块。templateId=null 为手工块；detached=true 不再受模板更新影响。
+class ScheduleInstance {
+  final int id;
+  final int? templateId;
+  final int dateDay; // yyyymmdd
+  final int startMinutes; // 0-1439
+  final int durationMinutes;
+  final String title;
+  final String description;
+  final int colorIndex;
+  final BlockStatus status;
+  final bool detached;
+  final DateTime? remindAt; // epoch ms
+  final DateTime? notifiedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const ScheduleInstance({
+    required this.id,
+    required this.templateId,
+    required this.dateDay,
+    required this.startMinutes,
+    required this.durationMinutes,
+    required this.title,
+    required this.description,
+    required this.colorIndex,
+    required this.status,
+    required this.detached,
+    required this.remindAt,
+    required this.notifiedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  int get endMinutes => startMinutes + durationMinutes;
+
+  bool overlaps(ScheduleInstance other) =>
+      dateDay == other.dateDay &&
+      startMinutes < other.endMinutes &&
+      other.startMinutes < endMinutes;
+}
+
+/// 日期工具（yyyymmdd int ↔ DateTime，纯函数）
+abstract final class DateDay {
+  static int of(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
+
+  static DateTime toDateTime(int dateDay) =>
+      DateTime(dateDay ~/ 10000, (dateDay ~/ 100) % 100, dateDay % 100);
+
+  static int addDays(int dateDay, int days) =>
+      of(toDateTime(dateDay).add(Duration(days: days)));
+}

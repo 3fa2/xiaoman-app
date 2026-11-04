@@ -1,0 +1,1449 @@
+import 'dart:convert';
+import 'dart:math';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:wechat_assets_picker/wechat_assets_picker.dart';
+
+import '../../design/motion.dart';
+import '../../design/tokens.dart';
+import '../../di/providers.dart';
+import '../../domain/models/diary.dart';
+import '../../domain/models/media.dart';
+import '../../domain/services/autosave_controller.dart';
+import 'journal_prompts.dart';
+import '../shared/widgets.dart';
+
+/// 日记编辑器（P0-1 自动保存重做）。
+///
+/// 四条纪律（详细方案 §5.1）：
+/// ① PopScope 退出守卫：保存中不许走，dirty 先 flush 再 pop
+/// ② 生命周期兜底：inactive/paused 立即落库（不再依赖 dispose）
+/// ③ dispose 只做清理，不发起新写入
+/// ④ UI 只反映真实状态：saved/saving/dirty/error，绝不撒谎
+class DiaryEditorScreen extends ConsumerStatefulWidget {
+  const DiaryEditorScreen({
+    super.key,
+    required this.diaryId,
+    this.notebookId,
+    this.initialDateDay,
+  });
+
+  final int? diaryId;
+
+  /// 从某本日记本进入新建时默认归本（null = 不归本）
+  final int? notebookId;
+
+  /// 新建时的补记日期（yyyyMMdd，null = 今天；仅限今天及以前，由路由层保证）
+  final int? initialDateDay;
+
+  @override
+  ConsumerState<DiaryEditorScreen> createState() => _DiaryEditorScreenState();
+}
+
+class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
+    with WidgetsBindingObserver {
+  final _title = TextEditingController();
+  final _content = TextEditingController();
+  final _speech = SpeechToText();
+  final _tagCtrl = TextEditingController();
+  bool _listening = false;
+  bool _ready = false;
+  int? _moodId;
+  int? _notebookId; // 归属日记本
+  late int _dateDay; // 日记归属日期（yyyyMMdd）：新建可补记，已有可改期
+  List<String> _tags = const []; // 实体未建时暂存，建后立即落库
+  MediaOwner get _ownerType => MediaOwner.diary;
+
+  late final AutosaveController _controller;
+  int? _savedId;
+  /// 退出流程进行中（防双击完成/系统返回并发触发两次 flush+pop）
+  bool _popping = false;
+  SaveStatus? _lastStatus; // 保存失败重触感：只在 error 从无到有时震一次
+
+  /// 实体 id：编辑已有 → 固定；新建 → 首存后回填
+  int? get _entityId => widget.diaryId ?? _savedId;
+
+  static int _todayInt() {
+    final n = DateTime.now();
+    return n.year * 10000 + n.month * 100 + n.day;
+  }
+
+  /// 导入媒体前确保实体已存在（新建且还没首存时，先落一条占位记录）
+  Future<int> _ensureEntityId() async {
+    if (_entityId != null) return _entityId!;
+    final repo = ref.read(diaryRepoProvider);
+    final id = await repo.save(
+      id: null,
+      title: _title.text,
+      content: _content.text,
+      extra: _moodId,
+      dateDay: _dateDay,
+    );
+    if (_tags.isNotEmpty) {
+      await repo.setTags(diaryId: id, tags: _tags);
+    }
+    if (_notebookId != null && _notebookId! > 0) {
+      await repo.setNotebook(diaryId: id, notebookId: _notebookId);
+    }
+    _controller.loadBaseline(
+      entityId: id,
+      title: _title.text,
+      content: _content.text,
+      extra: _moodId,
+      dateDay: _dateDay,
+    );
+    _savedId = id;
+    return id;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller = AutosaveController(
+      repo: ref.read(diaryRepoProvider),
+      draftOwnerType: _ownerType,
+      // 自动保存首建实体时，补写暂存的标签/归本（与 _ensureEntityId 同一套逻辑）。
+      // 否则"先加标签再打字"的场景标签会丢。
+      onSaved: (id) async {
+        _savedId = id;
+        // 补写暂存 tags/归本：失败不抢断主流程（下次保存幂等重试）
+        try {
+          final repo = ref.read(diaryRepoProvider);
+          if (_tags.isNotEmpty) {
+            await repo.setTags(diaryId: id, tags: _tags);
+          }
+          if (_notebookId != null && _notebookId! > 0) {
+            await repo.setNotebook(diaryId: id, notebookId: _notebookId);
+          }
+        } catch (_) {}
+      },
+    );
+    _controller.addListener(_onSaveStatus);
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final repo = ref.read(diaryRepoProvider);
+    final id = widget.diaryId;
+    if (id != null) {
+      final diary = await repo.getById(id);
+      if (diary == null) {
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
+      _title.text = diary.title;
+      _content.text = diary.content;
+      _moodId = diary.moodId;
+      _tags = diary.tags;
+      _notebookId = diary.notebookId;
+      _dateDay = diary.dateDay;
+      _controller.loadBaseline(
+        entityId: diary.id,
+        title: diary.title,
+        content: diary.content,
+        extra: diary.moodId,
+        dateDay: diary.dateDay,
+      );
+    } else {
+      _notebookId = widget.notebookId;
+      _dateDay = widget.initialDateDay ?? _todayInt();
+      // 草稿兑底（MoeMemos 模式）：新建时有残留草稿则提示恢复
+      final draft = await repo.findDraft(ownerType: _ownerType, ownerId: -1);
+      _controller.loadBaseline(
+        entityId: null, title: '', content: '', extra: null, dateDay: _dateDay,
+      );
+      if (draft != null && mounted) {
+        _promptRestoreDraft(draft);
+      }
+    }
+    if (mounted) setState(() => _ready = true);
+  }
+
+  void _promptRestoreDraft(Draft draft) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '发现未保存的草稿',
+              style: AppType.headline.copyWith(
+                color: Theme.of(ctx).colorScheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.s8),
+            Text(
+              '上次退出时有一篇没写完的日记，恢复它吗？',
+              style: AppType.body.copyWith(
+                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.s24),
+            FilledButton(
+              onPressed: () {
+                _restoreDraft(draft.payload);
+                Navigator.pop(ctx);
+              },
+              child: const Text('恢复'),
+            ),
+            TextButton(
+              onPressed: () {
+                ref.read(diaryRepoProvider).clearDraft(
+                      ownerType: _ownerType,
+                      ownerId: -1,
+                    );
+                Navigator.pop(ctx);
+              },
+              child: const Text('不要了'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _restoreDraft(String payload) {
+    String? title;
+    String? content;
+    int? extra;
+    try {
+      // 首选 jsonDecode：正则会在转义引号（如正文含 \\"）处截断
+      final map = jsonDecode(payload) as Map<String, dynamic>;
+      title = map['title'] as String?;
+      content = map['content'] as String?;
+      extra = map['extra'] as int?;
+    } catch (_) {
+      // 兼容旧正则（极旧版本草稿）
+      title = RegExp(r'"title":"(.*?)"').firstMatch(payload)?.group(1);
+      content =
+          RegExp(r'"content":"(.*?)"').firstMatch(payload)?.group(1);
+      final e = RegExp(r'"extra":(null|\d+)').firstMatch(payload)?.group(1);
+      extra = e == null || e == 'null' ? null : int.tryParse(e);
+      title = title?.replaceAll(r'\n', '\n');
+      content = content?.replaceAll(r'\n', '\n');
+    }
+    _title.text = title ?? '';
+    _content.text = content ?? '';
+    _moodId = extra;
+    _controller.loadBaseline(
+      entityId: null,
+      title: _title.text,
+      content: _content.text,
+      extra: null,
+      dateDay: _dateDay,
+    );
+    setState(() {});
+  }
+
+  // ---- 补记/改期：选日期（仅限今天及以前）----
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(
+        _dateDay ~/ 10000, (_dateDay ~/ 100) % 100, _dateDay % 100,
+      ),
+      firstDate: DateTime(2000),
+      lastDate: today,
+    );
+    if (picked == null) return;
+    final d = picked.year * 10000 + picked.month * 100 + picked.day;
+    if (d == _dateDay) return;
+    setState(() => _dateDay = d);
+    _controller.setDateDay(d);
+    if (_entityId != null) {
+      // 已有实体：立即移动日期；新建实体：等首存（有内容才落库，不留空行）
+      _controller.saveNow(
+        title: _title.text, content: _content.text, extra: _moodId,
+      );
+    }
+  }
+
+  // ---- 归入日记本（实体已存在则立即落库；否则暂存，首存后补写）----
+  Future<void> _pickNotebook(int? notebookId) async {
+    setState(() => _notebookId = notebookId);
+    final id = _entityId;
+    if (id != null) {
+      await ref
+          .read(diaryRepoProvider)
+          .setNotebook(diaryId: id, notebookId: notebookId);
+    }
+  }
+
+  // ---- 标签（实体已存在则立即落库；否则暂存，首存后补写）----
+  Future<void> _addTag(String tag) async {
+    if (tag.trim().isEmpty || _tags.contains(tag.trim())) return;
+    setState(() => _tags = [..._tags, tag.trim()]);
+    final id = _entityId;
+    if (id != null) {
+      await ref.read(diaryRepoProvider).setTags(diaryId: id, tags: _tags);
+    }
+  }
+
+  Future<void> _removeTag(String tag) async {
+    setState(() => _tags = [..._tags]..remove(tag));
+    final id = _entityId;
+    if (id != null) {
+      await ref.read(diaryRepoProvider).setTags(diaryId: id, tags: _tags);
+    }
+  }
+
+  void _onSaveStatus() {
+    // 保存失败重触感：错误从无到有时重震一下（UI pill + 触感双通道）
+    if (_controller.status == SaveStatus.error &&
+        _lastStatus != SaveStatus.error) {
+      HapticFeedback.heavyImpact();
+    }
+    _lastStatus = _controller.status;
+    if (mounted) setState(() {});
+  }
+
+  // ---- 生命周期兜底（Markor 做法）----
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _controller.flush(
+        title: _title.text, content: _content.text, extra: _moodId,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_onSaveStatus);
+    _controller.dispose();
+    _speech.stop();
+    _title.dispose();
+    _content.dispose();
+    _tagCtrl.dispose();
+    super.dispose();
+  }
+
+  // ---- 保存状态 → UI 映射 ----
+  SaveStatusUi get _uiStatus {
+    switch (_controller.status) {
+      case SaveStatus.idle:
+        return SaveStatusUi.idle;
+      case SaveStatus.dirty:
+        return SaveStatusUi.dirty;
+      case SaveStatus.saving:
+        return SaveStatusUi.saving;
+      case SaveStatus.saved:
+        return SaveStatusUi.saved;
+      case SaveStatus.error:
+        return SaveStatusUi.error;
+    }
+  }
+
+  Future<void> _onPopInvoked(bool didPop, _) async {
+    if (didPop) return;
+    if (_popping) return; // 并发退出（双击完成/保存中按返回）：flush 只跑一次
+    _popping = true;
+    await _controller.flush(
+      title: _title.text, content: _content.text, extra: _moodId,
+    );
+    // 保存失败不许走：内容还留在页面上，错误 pill 可见可重试（UI 不撒谎）
+    if (!mounted || _controller.status == SaveStatus.error) {
+      _popping = false; // 允许重试后再退出
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+  // ---- 媒体导入 ----
+  Future<void> _pickMedia() async {
+    final assets = await AssetPicker.pickAssets(
+      context,
+      pickerConfig: const AssetPickerConfig(
+        maxAssets: 9,
+        requestType: RequestType.common,
+      ),
+    );
+    if (assets == null || assets.isEmpty) return;
+    // 选完再建实体：先建的话用户取消选择会留下一条空日记占位行
+    final ownerId = await _ensureEntityId();
+    if (mounted) setState(() {}); // 刷新媒体流 owner
+    final repo = ref.read(mediaRepoProvider);
+    for (final asset in assets) {
+      final file = await asset.originFile;
+      if (file == null) continue;
+      if (asset.type == AssetType.image) {
+        final live = await repo.resolveLivePhoto(file.path);
+        if (live != null) {
+          final cover = await repo.copyInto(
+            live.coverImagePath, MediaOwner.diary, ownerId,
+          );
+          final video = await repo.copyInto(
+            live.videoPath, MediaOwner.diary, ownerId,
+          );
+          await repo.attach(
+            MediaItem(
+              id: 0,
+              ownerType: MediaOwner.diary,
+              ownerId: ownerId,
+              kind: MediaKind.livePhoto,
+              coverPath: cover,
+              videoPath: video,
+              thumbPath: null,
+              sortOrder: 0,
+              width: asset.width,
+              height: asset.height,
+              durationMs: null,
+              createdAt: DateTime.now(),
+            ),
+          );
+          continue;
+        }
+        final copied = await repo.copyInto(
+          file.path, MediaOwner.diary, ownerId,
+        );
+        await repo.attach(
+          MediaItem(
+            id: 0,
+            ownerType: MediaOwner.diary,
+            ownerId: ownerId,
+            kind: MediaKind.image,
+            coverPath: copied,
+            videoPath: null,
+            thumbPath: null,
+            sortOrder: 0,
+            width: asset.width,
+            height: asset.height,
+            durationMs: null,
+            createdAt: DateTime.now(),
+          ),
+        );
+      } else if (asset.type == AssetType.video) {
+        final copied = await repo.copyInto(
+          file.path, MediaOwner.diary, ownerId,
+        );
+        final thumb = await VideoThumbnail.thumbnailFile(
+          video: copied,
+          imageFormat: ImageFormat.JPEG,
+          quality: 60,
+        );
+        await repo.attach(
+          MediaItem(
+            id: 0,
+            ownerType: MediaOwner.diary,
+            ownerId: ownerId,
+            kind: MediaKind.video,
+            coverPath: null,
+            videoPath: copied,
+            thumbPath: thumb,
+            sortOrder: 0,
+            width: asset.width,
+            height: asset.height,
+            durationMs: asset.duration * 1000,
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  // ---- 实况照片播放（全屏页面自管 controller；视频缺失回退图片）----
+  Future<void> _playLivePhoto(MediaItem item) async {
+    final videoPath = item.videoPath;
+    if (videoPath == null || !File(videoPath).existsSync()) {
+      if (item.coverPath != null) {
+        await showFullscreenImage(context, item.coverPath!);
+      }
+      return;
+    }
+    await showFullscreenVideo(
+      context,
+      videoPath,
+      coverPath: item.coverPath,
+    );
+  }
+
+  // ---- 语音输入 ----
+  Future<void> _toggleSpeech() async {
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    final ok = await _speech.initialize();
+    // 权限弹窗可停留数秒，期间用户可能已退出编辑器
+    if (!ok || !mounted) return;
+    setState(() => _listening = true);
+    await _speech.listen(
+      localeId: 'zh_CN',
+      onResult: (result) {
+        final text = result.recognizedWords;
+        if (text.isNotEmpty && mounted) {
+          _content.text += text;
+          _controller.onChanged(
+            title: _title.text, content: _content.text, extra: _moodId,
+          );
+        }
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final moods = ref.watch(diaryRepoProvider).watchMoods();
+    final mediaStream = _entityId == null
+        ? null
+        : ref.watch(mediaRepoProvider).watchFor(MediaOwner.diary, _entityId!);
+
+    return PopScope(
+      // 恒 false：canPop 表达式在「typing 后重建帧完成前点完成」的微竞态下
+      // 仍是旧值 true 会直弹丢字；恒 false 由 _onPopInvoked 读 controller
+      // 实时状态统一决定（saved/idle flush 为空操作，只多一个微任务跳）。
+      // ⚠️ 注意：PopScope 只拦截 maybePop/系统返回；
+      // 任何直接 Navigator.pop() 的路径（如完成按钮）都会绕过它。
+      canPop: false,
+      onPopInvokedWithResult: _onPopInvoked,
+      child: Scaffold(
+        appBar: AppBar(
+          title: SaveStatusPill(
+            status: _uiStatus,
+            lastSavedAt: _controller.lastSavedAt,
+            error: _controller.error,
+            onRetry: () {
+              _controller.saveNow(
+                title: _title.text, content: _content.text, extra: _moodId,
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              // maybePop 走 PopScope 判定（canPop:false → flush 后手动 pop）。
+              // 此前的 Navigator.pop() 直弹路由、绕过 PopScope，
+              // 2 秒去抖窗口内的输入直接丢（v5.4.2 修复的真根因）。
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+        body: !_ready
+            ? const SkeletonList()
+            : Column(
+                children: [
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+                      ),
+                      children: [
+                        TextField(
+                          controller: _title,
+                          style: AppType.title.copyWith(color: p.onSurface),
+                          // 不用浮动 label（theme 全局 always 会被长文案裁切），
+                          // 改 hint：输入后消失，语义不变
+                          decoration: const InputDecoration(
+                            hintText: '标题（可不填，留空显示日期）',
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
+                            filled: false,
+                            fillColor: Colors.transparent,
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (v) => _controller.onChanged(
+                            title: v, content: _content.text, extra: _moodId,
+                          ),
+                        ),
+                        // 写作灵感（v5.8.1）：仅新建且全空时出现，点标题填入，可换
+                        if (widget.diaryId == null &&
+                            _title.text.isEmpty &&
+                            _content.text.isEmpty)
+                          _PromptRow(
+                            onUse: (text) {
+                              setState(() => _title.text = text);
+                              _controller.onChanged(
+                                title: text,
+                                content: _content.text,
+                                extra: _moodId,
+                              );
+                            },
+                          ),
+                        // 日期行：新建可补记任意过去日期，已有可改期（≤ 今天）
+                        InkWell(
+                          borderRadius: BorderRadius.circular(AppRadii.rMd),
+                          onTap: _pickDate,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.s8,
+                            ),
+                            child: Row(
+                              children: [
+                                PhosphorIcon(
+                                  PhosphorIconsRegular.calendarBlank,
+                                  size: 20,
+                                  color: p.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: AppSpacing.s8),
+                                Text(
+                                  '记在 ${DateFormat('M月d日 EEEE', 'zh_CN').format(DateTime(
+                                    _dateDay ~/ 10000,
+                                    (_dateDay ~/ 100) % 100,
+                                    _dateDay % 100,
+                                  ))}',
+                                  style: AppType.label.copyWith(
+                                    color: _dateDay == _todayInt()
+                                        ? p.onSurfaceVariant
+                                        : p.primary,
+                                  ),
+                                ),
+                                const Spacer(),
+                                PhosphorIcon(
+                                  PhosphorIconsRegular.caretDown,
+                                  size: 16,
+                                  color: p.onSurfaceVariant,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        _NotebookRow(
+                          notebookId: _notebookId,
+                          onPick: _pickNotebook,
+                        ),
+                        _MoodRow(
+                          moods: moods,
+                          moodId: _moodId,
+                          onPick: (id) {
+                            setState(() => _moodId = id);
+                            _controller.onChanged(
+                              title: _title.text,
+                              content: _content.text,
+                              extra: id,
+                            );
+                          },
+                        ),
+                        _TagRow(
+                          tags: _tags,
+                          tagCtrl: _tagCtrl,
+                          onAdd: _addTag,
+                          onRemove: _removeTag,
+                        ),
+                        const SizedBox(height: AppSpacing.withinBlock),
+                        TextField(
+                          controller: _content,
+                          style: AppType.bodyLoose.copyWith(color: p.onSurface),
+                          maxLines: null,
+                          minLines: 8,
+                          keyboardType: TextInputType.multiline,
+                          decoration: const InputDecoration(
+                            labelText: '正文',
+                            filled: false,
+                            fillColor: Colors.transparent,
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (v) => _controller.onChanged(
+                            title: _title.text, content: v, extra: _moodId,
+                          ),
+                        ),
+                        StreamBuilder<List<MediaItem>>(
+                          stream: mediaStream ?? const Stream.empty(),
+                          builder: (context, snap) {
+                            final items = snap.data ?? const <MediaItem>[];
+                            if (items.isEmpty) return const SizedBox.shrink();
+                            return _MediaGrid(
+                              items: items,
+                              onPlayLive: _playLivePhoto,
+                              onDelete: (m) async {
+                                // 连库带文件物理删除，不可逆：先确认
+                                final ok = await showConfirmSheet(
+                                  context,
+                                  title: '删除这张媒体？',
+                                  message: '会连文件一起删除，找不回来',
+                                );
+                                if (!ok || !mounted) return;
+                                await ref
+                                    .read(mediaRepoProvider)
+                                    .remove(m.id);
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  _EditorToolbar(
+                    listening: _listening,
+                    onPickMedia: _pickMedia,
+                    onToggleSpeech: _toggleSpeech,
+                    charCount: _title.text.length + _content.text.length,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// 归入日记本选择行（类似 _MoodRow）
+class _NotebookRow extends ConsumerWidget {
+  const _NotebookRow({required this.notebookId, required this.onPick});
+
+  final int? notebookId;
+  final ValueChanged<int?> onPick;
+
+  Future<void> _sheet(BuildContext context, WidgetRef ref) async {
+    final p = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) => StreamBuilder<List<(DiaryNotebook, int)>>(
+        stream: ref.read(diaryRepoProvider).watchDiaryNotebooks(),
+        builder: (context, snap) {
+          final list = snap.data ?? const <(DiaryNotebook, int)>[];
+          final dark = Theme.of(ctx).brightness == Brightness.dark;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '归入日记本',
+                  style: AppType.headline.copyWith(color: p.onSurface),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.s8),
+                ListTile(
+                  leading: PhosphorIcon(
+                    PhosphorIconsRegular.stack,
+                    color: p.onSurfaceVariant,
+                  ),
+                  title: const Text('不归本'),
+                  selected: notebookId == null,
+                  onTap: () {
+                    onPick(null);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                for (final (nb, _) in list)
+                  ListTile(
+                    leading: MoodDot(
+                      color: NotebookPalette.resolve(nb.colorIndex, dark: dark),
+                      size: 10,
+                    ),
+                    title: Text(nb.name),
+                    selected: notebookId == nb.id,
+                    onTap: () {
+                      onPick(nb.id);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<(DiaryNotebook, int)>>(
+      stream: ref.watch(diaryRepoProvider).watchDiaryNotebooks(),
+      builder: (context, snap) {
+        final list = snap.data ?? const <(DiaryNotebook, int)>[];
+        final current = list
+            .where((e) => e.$1.id == notebookId)
+            .map((e) => e.$1)
+            .firstOrNull;
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        return InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.rMd),
+          onTap: () => _sheet(context, ref),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
+            child: Row(
+              children: [
+                PhosphorIcon(
+                  PhosphorIconsRegular.books,
+                  size: 20,
+                  color: p.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Text(
+                  current == null ? '归入日记本' : current.name,
+                  style: AppType.label.copyWith(
+                    color: current == null
+                        ? p.onSurfaceVariant
+                        : (dark ? p.onSurface : p.primary),
+                  ),
+                ),
+                if (current != null) ...[
+                  const SizedBox(width: AppSpacing.s8),
+                  MoodDot(
+                    color: NotebookPalette.resolve(
+                      current.colorIndex,
+                      dark: dark,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                PhosphorIcon(
+                  PhosphorIconsRegular.caretDown,
+                  size: 16,
+                  color: p.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MoodRow extends StatelessWidget {
+  const _MoodRow({
+    required this.moods,
+    required this.moodId,
+    required this.onPick,
+  });
+
+  final Stream<List<Mood>> moods;
+  final int? moodId;
+  final ValueChanged<int?> onPick;
+
+  Future<void> _sheet(BuildContext context) async {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) => Consumer(
+        builder: (context, ref, _) => StreamBuilder<List<Mood>>(
+          stream: moods,
+          builder: (context, snap) {
+            final list = snap.data ?? const <Mood>[];
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page, 0, AppSpacing.page, AppSpacing.s24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '今天的心情',
+                    style: AppType.headline.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.s16),
+                  Wrap(
+                    spacing: AppSpacing.s8,
+                    runSpacing: AppSpacing.s8,
+                    children: [
+                      for (final m in list)
+                        _MoodPickChip(
+                          mood: m,
+                          selected: moodId == m.id,
+                          dark: dark,
+                          onTap: () {
+                            onPick(moodId == m.id ? null : m.id);
+                            Navigator.pop(ctx);
+                          },
+                          onLongPress: m.isPreset
+                              ? null
+                              : () async {
+                                  final ok = await showConfirmSheet(
+                                    ctx,
+                                    title: '删除心情「${m.name}」？',
+                                    message: '已用它打卡的日记会变成无心情',
+                                  );
+                                  if (ok) {
+                                    await ref
+                                        .read(diaryRepoProvider)
+                                        .deleteMood(m.id);
+                                  }
+                                },
+                        ),
+                      _MoodAddChip(dark: dark),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Mood>>(
+      stream: moods,
+      builder: (context, snap) {
+        final current =
+            (snap.data ?? const <Mood>[]).where((m) => m.id == moodId).firstOrNull;
+        return InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.rMd),
+          onTap: () => _sheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
+            child: Row(
+              children: [
+                PhosphorIcon(
+                  PhosphorIconsRegular.smiley,
+                  size: 20,
+                  color: p.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Text(
+                  current == null ? '记个心情' : current.name,
+                  style: AppType.label.copyWith(
+                    color: current == null
+                        ? p.onSurfaceVariant
+                        : (dark ? p.onSurface : p.primary),
+                  ),
+                ),
+                if (current != null) ...[
+                  const SizedBox(width: AppSpacing.s8),
+                  Text(
+                    current.name,
+                    style: AppType.label.copyWith(
+                      color: MoodPalette.colorOf(current.hue, dark: dark),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                PhosphorIcon(
+                  PhosphorIconsRegular.caretDown,
+                  size: 16,
+                  color: p.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 自定义心情入口 chip → 表单（名字 + 12 色点选 hue）→ addMood
+class _MoodAddChip extends ConsumerWidget {
+  const _MoodAddChip({required this.dark});
+
+  final bool dark;
+
+  Future<void> _save(
+    BuildContext ctx,
+    WidgetRef ref,
+    TextEditingController nameCtrl,
+    double hue,
+  ) async {
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    await ref.read(diaryRepoProvider).addMood(name, hue);
+    if (ctx.mounted) Navigator.pop(ctx);
+  }
+
+  Future<void> _openForm(BuildContext context, WidgetRef ref) async {
+    final p = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController();
+    var hue = MoodPalette.customHues.first;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.page, 0, AppSpacing.page,
+            AppSpacing.s24 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '自定义心情',
+                style: AppType.headline.copyWith(color: p.onSurface),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '心情名，如：充实、上头',
+                ),
+                onSubmitted: (_) => _save(ctx, ref, nameCtrl, hue),
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              Wrap(
+                spacing: AppSpacing.s8,
+                runSpacing: AppSpacing.s8,
+                children: [
+                  for (final h in MoodPalette.customHues)
+                    GestureDetector(
+                      onTap: () => setSheet(() => hue = h),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: MoodPalette.colorOf(h, dark: dark),
+                          border: hue == h
+                              ? Border.all(color: p.primary, width: 2.5)
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s24),
+              FilledButton(
+                onPressed: () => _save(ctx, ref, nameCtrl, hue),
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    return PressableScale(
+      onTap: () => _openForm(context, ref),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s12, vertical: AppSpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: p.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadii.rSm),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+              PhosphorIconsRegular.plus,
+              size: 16,
+              color: p.onSurfaceVariant,
+            ),
+            const SizedBox(width: AppSpacing.s4),
+            Text(
+              '自定义',
+              style: AppType.label.copyWith(color: p.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoodPickChip extends StatelessWidget {
+  const _MoodPickChip({
+    required this.mood,
+    required this.selected,
+    required this.dark,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  final Mood mood;
+  final bool selected;
+  final bool dark;
+  final VoidCallback onTap;
+
+  /// 长按删除自定义心情（预设不提供）
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return PressableScale(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: AnimatedScale(
+        scale: selected ? 1.12 : 1,
+        duration: MotionDuration.base,
+        curve: MotionCurve.standard,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.s12, vertical: AppSpacing.s8,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? p.primaryContainer : p.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadii.rSm),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MoodDot(color: MoodPalette.colorOf(mood.hue, dark: dark)),
+              const SizedBox(width: AppSpacing.s8),
+              Text(
+                mood.name,
+                style: AppType.label.copyWith(
+                  color: selected
+                      ? (dark ? p.onSurface : p.primary)
+                      : p.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 标签行：已有标签 chips（点叉删）+ 添加入口（底部弹窗输入）
+class _TagRow extends StatelessWidget {
+  const _TagRow({
+    required this.tags,
+    required this.tagCtrl,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final List<String> tags;
+  final TextEditingController tagCtrl;
+  final ValueChanged<String> onAdd;
+  final ValueChanged<String> onRemove;
+
+  Future<void> _sheet(BuildContext context) async {
+    tagCtrl.clear();
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.page, 0, AppSpacing.page,
+          AppSpacing.s24 + MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '添加标签',
+              style: AppType.headline.copyWith(
+                color: Theme.of(ctx).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s16),
+            TextField(
+              controller: tagCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '标签名，如：工作、旅行'),
+              onSubmitted: (v) {
+                onAdd(v);
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: AppSpacing.s4,
+              runSpacing: AppSpacing.s4,
+              children: [
+                for (final t in tags)
+                  Chip(
+                    label: Text(t),
+                    onDeleted: () => onRemove(t),
+                  ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _sheet(context),
+            child: PhosphorIcon(
+              PhosphorIconsRegular.plusCircle,
+              size: 20,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MediaGrid extends StatelessWidget {
+  const _MediaGrid({
+    required this.items,
+    required this.onPlayLive,
+    required this.onDelete,
+  });
+
+  final List<MediaItem> items;
+  final ValueChanged<MediaItem> onPlayLive;
+  final ValueChanged<MediaItem> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.s12),
+      child: Wrap(
+        spacing: AppSpacing.s8,
+        runSpacing: AppSpacing.s8,
+        children: [
+          for (final m in items)
+            Stack(
+              children: [
+                GestureDetector(
+                  // 图片点开全屏查看；视频/实况点按走播放器（与详情页一致，
+                  // 此前一律当图片全屏会把 96px 缩略图拉满屏且视频无法播放）
+                  onTap: m.kind == MediaKind.image
+                      ? ((m.coverPath ?? m.thumbPath) == null
+                          ? null
+                          : () => showFullscreenImage(
+                              context, m.coverPath ?? m.thumbPath!,
+                              // 独立 tag：与详情页网格的 media-$id 区分。
+                              // 编辑器与详情同在 /diary 分支 Navigator，
+                              // 同 tag 会在详情↔编辑器转场时非预期配对飞行
+                              heroTag: 'edit-media-${m.id}'))
+                      : () => onPlayLive(m),
+                  onLongPress: m.kind == MediaKind.image
+                      ? null
+                      : () => onPlayLive(m),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadii.rMd),
+                    child: Hero(
+                      tag: 'edit-media-${m.id}',
+                      child: _thumb(context, m),
+                    ),
+                  ),
+                ),
+                if (m.kind == MediaKind.livePhoto)
+                  Positioned(
+                    left: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.s4, vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.inverseSurface,
+                        borderRadius: BorderRadius.circular(AppRadii.rSm),
+                      ),
+                      child: Text(
+                        '实况',
+                        style: AppType.caption.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onInverseSurface,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  right: -8,
+                  top: -8,
+                  child: IconButton(
+                    icon: PhosphorIcon(
+                      PhosphorIconsFill.xCircle,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    onPressed: () => onDelete(m),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 缩略图：路径缺失/加载失败给占位框，绝不 File(null) 崩
+  Widget _thumb(BuildContext context, MediaItem m) {
+    final p = Theme.of(context).colorScheme;
+    final path = m.thumbPath ?? m.coverPath;
+    Widget fallback() => Container(
+          width: 96,
+          height: 96,
+          color: p.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: PhosphorIcon(
+            PhosphorIconsRegular.filmStrip,
+            size: 24,
+            color: p.onSurfaceVariant,
+          ),
+        );
+    if (path == null) return fallback();
+    return Image.file(
+      File(path),
+      width: 96,
+      height: 96,
+      fit: BoxFit.cover,
+      // 性能纪律 #7：按显示尺寸解码，不把原视频帧拖进内存
+      cacheWidth: 96,
+      cacheHeight: 96,
+      errorBuilder: (_, __, ___) => fallback(),
+    );
+  }
+}
+
+class _EditorToolbar extends StatelessWidget {
+  const _EditorToolbar({
+    required this.listening,
+    required this.onPickMedia,
+    required this.onToggleSpeech,
+    required this.charCount,
+  });
+
+  final bool listening;
+  final VoidCallback onPickMedia;
+  final VoidCallback onToggleSpeech;
+  final int charCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(top: BorderSide(color: p.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onPickMedia,
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.imagesSquare,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+          IconButton(
+            onPressed: onToggleSpeech,
+            icon: PhosphorIcon(
+              listening
+                  ? PhosphorIconsFill.microphone
+                  : PhosphorIconsRegular.microphone,
+              color: listening ? p.primary : p.onSurfaceVariant,
+            ),
+          ),
+          if (listening)
+            Text('听写中…', style: AppType.caption.copyWith(color: p.primary)),
+          const Spacer(),
+          // 实时字数（标题+正文）
+          Text(
+            '$charCount 字',
+            style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 写作灵感行（v5.8.1）：仅新建且全空时显示。点主文案把提示填入标题，
+/// 点右侧刷新随机换一条（避开当前）。
+class _PromptRow extends StatefulWidget {
+  const _PromptRow({required this.onUse});
+
+  final ValueChanged<String> onUse;
+
+  @override
+  State<_PromptRow> createState() => _PromptRowState();
+}
+
+class _PromptRowState extends State<_PromptRow> {
+  late String _current = promptOfDay(DateTime.now());
+  final _rng = Random();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.rMd),
+              onTap: () => widget.onUse(_current),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIconsRegular.sparkle,
+                      size: 15,
+                      color: p.primary,
+                    ),
+                    const SizedBox(width: AppSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        _current,
+                        style: AppType.caption.copyWith(
+                          color: p.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '换一个',
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              setState(() => _current = nextPrompt(_current, _rng));
+            },
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.arrowsClockwise,
+              size: 15,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

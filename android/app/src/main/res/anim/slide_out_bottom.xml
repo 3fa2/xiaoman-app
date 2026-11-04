@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ViewFlipper 页面切出：向上滑出（350ms 加速） -->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:fromYDelta="0%"
+    android:toYDelta="-100%"
+    android:duration="350"
+    android:interpolator="@android:anim/accelerate_interpolator" />

@@ -1,0 +1,742 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../../app/router.dart';
+import '../../design/motion.dart';
+import '../../design/tokens.dart';
+import '../../di/providers.dart';
+import '../../domain/models/schedule.dart';
+import '../shared/widgets.dart';
+
+/// 日程 · 今天：时间轴 0-24h，块可点可拖（长按跟手拖动 + 15 分钟吸附）。
+/// 布局：Stack + Positioned；重叠块贪心分列。
+class ScheduleTodayScreen extends ConsumerStatefulWidget {
+  const ScheduleTodayScreen({super.key});
+
+  @override
+  ConsumerState<ScheduleTodayScreen> createState() =>
+      _ScheduleTodayScreenState();
+}
+
+class _ScheduleTodayScreenState extends ConsumerState<ScheduleTodayScreen>
+    with WidgetsBindingObserver {
+  Timer? _dayTimer;
+  int _shownDay = 0;
+
+  static int _todayInt() {
+    final n = DateTime.now();
+    return n.year * 10000 + n.month * 100 + n.day;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _shownDay = _todayInt();
+    // 跨午夜：停留页面时换天（数据流/FAB 目标/日期条跟随）；
+    // 后台期间 Timer 被挂起，resumed 时立即补一次
+    _dayTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshDay());
+    // 打开页面即补生成（滚动窗口）+ 同步提醒
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final repo = ref.read(scheduleRepoProvider);
+      if (repo.needsRegenerate) {
+        repo.regenerate().then(
+              (_) => ref.read(reminderWarningsProvider.notifier).syncNow(),
+            );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dayTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshDay();
+  }
+
+  void _refreshDay() {
+    final today = _todayInt();
+    if (today == _shownDay) return;
+    setState(() => _shownDay = today);
+    // 新的一天：滚动窗口可能需要补生成实例
+    final repo = ref.read(scheduleRepoProvider);
+    if (repo.needsRegenerate) {
+      repo.regenerate().then((_) {
+        if (mounted) ref.read(reminderWarningsProvider.notifier).syncNow();
+      });
+    }
+  }
+
+  /// 拖拽改时间：保留时长与提醒提前量，模板实例自动分离
+  Future<void> _moveBlock(ScheduleInstance b, int newStart) async {
+    final repo = ref.read(scheduleRepoProvider);
+    int? remindBefore;
+    final remindAt = b.remindAt;
+    if (remindAt != null) {
+      final day = DateDay.toDateTime(b.dateDay);
+      final blockStart = DateTime(day.year, day.month, day.day)
+          .add(Duration(minutes: b.startMinutes));
+      remindBefore = blockStart.difference(remindAt).inMinutes;
+    }
+    try {
+      await repo.saveInstance(
+        id: b.id,
+        templateId: b.templateId,
+        dateDay: b.dateDay,
+        startMinutes: newStart,
+        durationMinutes: b.durationMinutes,
+        title: b.title,
+        description: b.description,
+        colorIndex: b.colorIndex,
+        detachOnEdit: true,
+        remindMinutesBefore: remindBefore != null && remindBefore > 0
+            ? remindBefore
+            : null,
+      );
+    } catch (_) {
+      // 保存失败必须可见：流未更新块会弹回原位，提示用户这次拖动没生效
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('保存失败，时间已还原')),
+        );
+      }
+      return;
+    }
+    ref.read(reminderWarningsProvider.notifier).syncNow();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final todayDay = _shownDay;
+    final instances = ref.watch(scheduleRepoProvider).watchDay(todayDay);
+    final warnings = ref.watch(reminderWarningsProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('日程'),
+        actions: [
+          // v5.5.0：日历跳转（可跳任意过去日期，配合日期条回看历史日程）
+          IconButton(
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+              if (!mounted) return;
+              context.openScheduleDay(
+                picked.year * 10000 + picked.month * 100 + picked.day,
+              );
+            },
+            tooltip: '跳到某天',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.calendarBlank,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+          IconButton(
+            onPressed: () => context.openTemplates(),
+            tooltip: '重复模板',
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.repeat,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: AppFab(
+        icon: PhosphorIconsRegular.calendarPlus,
+        tooltip: '新建日程',
+        onPressed: () => context.openScheduleEdit(dateDay: todayDay),
+      ),
+      body: Column(
+        children: [
+          if (warnings.isNotEmpty)
+            MaterialBannerLike(
+              message: warnings.first,
+              onDismiss: () =>
+                  ref.read(reminderWarningsProvider.notifier).set(const []),
+            ),
+          _DayStrip(todayDay: todayDay),
+          Expanded(
+            child: StreamBuilder<List<ScheduleInstance>>(
+              stream: instances,
+              builder: (context, snap) {
+                final list = snap.data ?? const <ScheduleInstance>[];
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(AppSpacing.page),
+                    child: SkeletonList(),
+                  );
+                }
+                if (list.isEmpty) {
+                  return EmptyState(
+                    icon: PhosphorIconsRegular.calendarBlank,
+                    title: '今天是空的',
+                    hint: '加一个时间块，或建个每天重复的模板',
+                    actionLabel: '管理重复模板',
+                    onAction: () => context.openTemplates(),
+                    examples: [
+                      (
+                        '加「晚上复盘」21:00',
+                        () async => _quickAdd(
+                          title: '晚上复盘',
+                          startMinutes: 21 * 60,
+                        ),
+                      ),
+                      (
+                        '加「午休」12:30',
+                        () async => _quickAdd(
+                          title: '午休',
+                          startMinutes: 12 * 60 + 30,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return TimeLineView(
+                  dateDay: todayDay,
+                  blocks: list,
+                  nowMinutes: now.hour * 60 + now.minute,
+                  onBlockTap: (b) =>
+                      context.openScheduleEdit(instanceId: b.id),
+                  onBlockMove: _moveBlock,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quickAdd({
+    required String title,
+    required int startMinutes,
+  }) async {
+    // 一次取值：避免跨午夜瞬间三次 now() 拼出不一致的 dateDay
+    final n = DateTime.now();
+    final today = n.year * 10000 + n.month * 100 + n.day;
+    await ref.read(scheduleRepoProvider).saveInstance(
+      id: null,
+      templateId: null,
+      dateDay: today,
+      startMinutes: startMinutes,
+      durationMinutes: 30,
+      title: title,
+      description: '',
+      colorIndex: 0,
+      detachOnEdit: false,
+      remindMinutesBefore: null,
+    );
+  }
+}
+
+/// 顶部横向日期条：过去 7 天 + 今天 + 未来 13 天（v5.5.0 起可回看历史日程），
+/// 点进单日页（单日时间轴）。过去的日期文字弱化，今天高亮、初始定位到今天。
+class _DayStrip extends StatefulWidget {
+  const _DayStrip({required this.todayDay});
+
+  final int todayDay;
+
+  @override
+  State<_DayStrip> createState() => _DayStripState();
+}
+
+class _DayStripState extends State<_DayStrip> {
+  final _scroll = ScrollController(initialScrollOffset: 7 * 60.0);
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    const cn = ['一', '二', '三', '四', '五', '六', '日'];
+    return SizedBox(
+      height: 56,
+      child: ListView.builder(
+        controller: _scroll,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
+        // -7 天到 +13 天，共 21 格（更早的用 AppBar 日历跳）
+        itemCount: 21,
+        itemBuilder: (context, i) {
+          final offset = i - 7;
+          final d = DateTime.now().add(Duration(days: offset));
+          final dd = d.year * 10000 + d.month * 100 + d.day;
+          final isToday = offset == 0;
+          final isPast = offset < 0;
+          return Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.s8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.rMd),
+              onTap: () => context.openScheduleDay(dd),
+              child: Container(
+                width: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isToday ? p.primaryContainer : p.surface,
+                  borderRadius: BorderRadius.circular(AppRadii.rMd),
+                  border: Border.all(
+                    // 今天主色描边；过去日期边框弱化
+                    color: isToday
+                        ? (dark ? p.primary : p.primary.withAlpha(120))
+                        : p.outlineVariant,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${d.month}/${d.day}',
+                      style: AppType.label.copyWith(
+                        color: isToday
+                            ? (dark ? p.onSurface : p.primary)
+                            : (isPast ? p.onSurfaceVariant : p.onSurface),
+                        // 过去的日期弱化
+                        fontWeight: isPast ? FontWeight.w400 : null,
+                      ),
+                    ),
+                    Text(
+                      isToday ? '今' : cn[d.weekday - 1],
+                      style: AppType.caption.copyWith(
+                        color: isToday
+                            ? p.primary
+                            : (isPast
+                                ? p.onSurfaceVariant.withAlpha(130)
+                                : p.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 提醒未生效警告条（失败必须可见，不静默）
+class MaterialBannerLike extends StatelessWidget {
+  const MaterialBannerLike({
+    super.key,
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.page, AppSpacing.s8, AppSpacing.page, 0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.cardPad, vertical: AppSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: p.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadii.rMd),
+      ),
+      child: Row(
+        children: [
+          PhosphorIcon(
+            PhosphorIconsRegular.warning,
+            size: 18,
+            color: p.error,
+          ),
+          const SizedBox(width: AppSpacing.s8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppType.caption.copyWith(color: p.onSurface),
+            ),
+          ),
+          GestureDetector(
+            onTap: onDismiss,
+            child: PhosphorIcon(
+              PhosphorIconsRegular.x,
+              size: 16,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 时间轴视图（今天 / 任意一天复用）
+/// 长按时间块竖直拖动改开始时间，15 分钟吸附，松手保存。
+class TimeLineView extends StatefulWidget {
+  const TimeLineView({
+    super.key,
+    required this.dateDay,
+    required this.blocks,
+    required this.nowMinutes,
+    required this.onBlockTap,
+    required this.onBlockMove,
+  });
+
+  final int dateDay;
+  final List<ScheduleInstance> blocks;
+  final int nowMinutes;
+  final ValueChanged<ScheduleInstance> onBlockTap;
+  final void Function(ScheduleInstance block, int newStartMinutes) onBlockMove;
+
+  static const hourHeight = 64.0;
+  static const totalHeight = 24 * hourHeight;
+
+  @override
+  State<TimeLineView> createState() => _TimeLineViewState();
+}
+
+class _TimeLineViewState extends State<TimeLineView> {
+  int? _dragId;
+  int _dragStart = 0;
+  int _dragDuration = 0;
+  int _rawStart = 0; // 拖动起始分钟（不吸附的原始值）
+  double _pointerStartY = 0;
+
+  // 当前时间线自驱时钟：此前只在数据流发射时重算，页面停留期间红线冻结
+  late int _nowMinutes = widget.nowMinutes;
+  // 「这天还是不是今天」随时间维护：跨午后红线要消失（此前只在 build 时判一次）
+  late bool _isToday = widget.dateDay == _today();
+  Timer? _nowTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      final today = _today();
+      final isToday = widget.dateDay == today;
+      if (isToday != _isToday) {
+        setState(() => _isToday = isToday);
+        if (!isToday) return;
+      }
+      if (!isToday) return;
+      final n = DateTime.now();
+      final m = n.hour * 60 + n.minute;
+      if (m != _nowMinutes) setState(() => _nowMinutes = m);
+    });
+  }
+
+  @override
+  void didUpdateWidget(TimeLineView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父层重建带来的时间更新优先（跨屏/换天场景）
+    if (widget.nowMinutes != oldWidget.nowMinutes) {
+      _nowMinutes = widget.nowMinutes;
+    }
+    if (widget.dateDay != oldWidget.dateDay) {
+      _isToday = widget.dateDay == _today();
+    }
+  }
+
+  @override
+  void dispose() {
+    _nowTimer?.cancel();
+    super.dispose();
+  }
+
+  void _dragBegin(ScheduleInstance b, LongPressStartDetails d) {
+    HapticFeedback.lightImpact(); // 拖起触感：提示已抓住时间块
+    setState(() {
+      _dragId = b.id;
+      _dragStart = b.startMinutes;
+      _rawStart = b.startMinutes;
+      _dragDuration = b.durationMinutes;
+      _pointerStartY = d.globalPosition.dy;
+    });
+  }
+
+  void _dragUpdate(LongPressMoveUpdateDetails d) {
+    final deltaMinutes =
+        (d.globalPosition.dy - _pointerStartY) /
+            TimeLineView.totalHeight *
+            1440;
+    var clamped = (_rawStart + deltaMinutes)
+        .round()
+        .clamp(0, 1440 - _dragDuration);
+    // 15 分钟吸附
+    clamped = (clamped ~/ 15) * 15;
+    setState(() => _dragStart = clamped);
+  }
+
+  void _dragEnd(ScheduleInstance b) {
+    // 守卫：非拖拽态直接忽略。单击块时 SDK 也会触发 cancel 路径
+    // （LongGestureRecognizer possible 态 resolve rejected → onLongPressCancel），
+    // 没有这个守卫会拿 _dragStart 初始值 0 误存库把块挪到 0:00。
+    if (_dragId == null) return;
+    final start = _dragStart;
+    final moved = start != b.startMinutes;
+    setState(() => _dragId = null);
+    if (moved) widget.onBlockMove(b, start);
+  }
+
+  /// 系统级指针取消（来电/下拉通知栏打断拖拽）：LongPress 手势 accepted 后
+  /// onLongPressEnd/Cancel 都不会回调，用原始 PointerCancel 兜底收尾
+  void _cancelDrag() {
+    final id = _dragId;
+    if (id == null) return;
+    for (final b in widget.blocks) {
+      if (b.id == id) {
+        _dragEnd(b);
+        return;
+      }
+    }
+    setState(() => _dragId = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final p = Theme.of(context).colorScheme;
+    final positioned = _layout(widget.blocks);
+
+    // Listener 捕获系统级指针取消（见 _cancelDrag 注释）
+    return Listener(
+      onPointerCancel: (_) => _cancelDrag(),
+      child: SingleChildScrollView(
+      child: SizedBox(
+        height: TimeLineView.totalHeight,
+        child: Stack(
+          children: [
+            // 小时刻度
+            for (var h = 0; h <= 24; h++)
+              Positioned(
+                left: AppSpacing.page,
+                right: AppSpacing.page,
+                top: h * TimeLineView.hourHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (h > 0 && h < 24)
+                      Container(height: 1, color: p.outlineVariant),
+                  ],
+                ),
+              ),
+            // 刻度文字
+            for (var h = 0; h < 24; h++)
+              Positioned(
+                left: AppSpacing.page,
+                top: h * TimeLineView.hourHeight + 2,
+                child: Text(
+                  '${h.toString().padLeft(2, '0')}:00',
+                  style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                ),
+              ),
+            // 当前时间线
+            if (_isToday)
+              Positioned(
+                left: 56,
+                right: AppSpacing.page,
+                top: _nowMinutes / 1440 * TimeLineView.totalHeight,
+                child: Container(height: 1.5, color: p.primary),
+              ),
+            // 拖动中的时间提示（吸附粒度）
+            if (_dragId != null)
+              Positioned(
+                left: AppSpacing.page,
+                top: _dragStart / 1440 * TimeLineView.totalHeight - 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.s8, vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: p.inverseSurface,
+                    borderRadius: BorderRadius.circular(AppRadii.rSm),
+                  ),
+                  child: Text(
+                    '${_hm(_dragStart)} - ${_hm(_dragStart + _dragDuration)}',
+                    style: AppType.caption.copyWith(
+                      color: p.onInverseSurface,
+                    ),
+                  ),
+                ),
+              ),
+            // 时间块
+            for (final entry in positioned.entries)
+              for (final b in entry.value)
+                Positioned(
+                  left: 64 + entry.key * 12.0,
+                  right: AppSpacing.page - entry.key * 12.0,
+                  top: (b.id == _dragId ? _dragStart : b.startMinutes) /
+                          1440 *
+                          TimeLineView.totalHeight,
+                  height:
+                      b.durationMinutes / 1440 * TimeLineView.totalHeight - 2,
+                  child: ScaleFadeIn(
+                    child: _BlockCard(
+                      block: b,
+                      dark: dark,
+                      dragging: b.id == _dragId,
+                      onTap: () => widget.onBlockTap(b),
+                      onDragStart: (d) => _dragBegin(b, d),
+                      onDragUpdate: _dragUpdate,
+                      onDragEnd: () => _dragEnd(b),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  static int _today() {
+    final n = DateTime.now();
+    return n.year * 10000 + n.month * 100 + n.day;
+  }
+
+  static String _hm(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, '0');
+    final m = (minutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  /// 贪心列分配：重叠的块横向错开
+  static Map<int, List<ScheduleInstance>> _layout(
+    List<ScheduleInstance> blocks,
+  ) {
+    final sorted = [...blocks]..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    final columns = <int, int?>{}; // instance -> column
+    final columnEnds = <double>[];
+    for (final b in sorted) {
+      final end = b.endMinutes.toDouble();
+      var col = columnEnds.indexWhere((e) => e <= b.startMinutes);
+      if (col == -1) {
+        col = columnEnds.length;
+        columnEnds.add(end);
+      } else {
+        columnEnds[col] = end;
+      }
+      columns[b.id] = col;
+    }
+    final result = <int, List<ScheduleInstance>>{};
+    for (final b in blocks) {
+      final col = columns[b.id] ?? 0;
+      result.putIfAbsent(col, () => []).add(b);
+    }
+    return result;
+  }
+}
+
+class _BlockCard extends StatelessWidget {
+  const _BlockCard({
+    required this.block,
+    required this.dark,
+    required this.dragging,
+    required this.onTap,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
+
+  final ScheduleInstance block;
+  final bool dark;
+  final bool dragging;
+  final VoidCallback onTap;
+  final void Function(LongPressStartDetails) onDragStart;
+  final void Function(LongPressMoveUpdateDetails) onDragUpdate;
+  final VoidCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final color = SchedulePalette.of(block.colorIndex, dark: dark);
+    final done = block.status == BlockStatus.done;
+    return GestureDetector(
+      onTap: onTap,
+      onLongPressStart: onDragStart,
+      onLongPressMoveUpdate: onDragUpdate,
+      onLongPressEnd: (_) => onDragEnd(),
+      // 拖拽被系统打断的兜底不在这里：LongPress accepted 后 cancel 不回调，
+      // 由外层 Listener.onPointerCancel 统一处理（见 _cancelDrag）
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        curve: MotionCurve.standard,
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s8, vertical: AppSpacing.s4,
+        ),
+        decoration: BoxDecoration(
+          color: color.withAlpha(done ? 90 : 55),
+          borderRadius: BorderRadius.circular(AppRadii.rMd),
+          border: Border(
+            left: BorderSide(color: color, width: 3),
+            // 拖动中强调：主色描边 + 提示可拖
+            top: BorderSide(color: dragging ? p.primary : Colors.transparent, width: dragging ? 1.5 : 0),
+            right: BorderSide(color: dragging ? p.primary : Colors.transparent, width: dragging ? 1.5 : 0),
+            bottom: BorderSide(color: dragging ? p.primary : Colors.transparent, width: dragging ? 1.5 : 0),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '${block.title}${block.detached ? ' ·已分离' : ''}',
+                    style: AppType.label.copyWith(
+                      color: done ? p.onSurfaceVariant : p.onSurface,
+                      decoration:
+                          done ? TextDecoration.lineThrough : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (dragging)
+                  PhosphorIcon(
+                    PhosphorIconsRegular.arrowsOutLineVertical,
+                    size: 12,
+                    color: p.primary,
+                  ),
+              ],
+            ),
+            if (block.durationMinutes >= 60 || dragging)
+              Text(
+                '${_hm(block.startMinutes)}-${_hm(block.endMinutes)}',
+                style: AppType.caption.copyWith(
+                  color: p.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _hm(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, '0');
+    final m = (minutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+}

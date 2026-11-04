@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件条目左侧装饰竖条（雾蓝） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="1.5dp" />
+    <solid android:color="@color/widget_primary" />
+    <size android:width="3dp" android:height="14dp" />
+</shape>

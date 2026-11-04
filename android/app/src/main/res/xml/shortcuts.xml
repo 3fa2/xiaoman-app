@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长按应用图标的快捷方式（v5.3）：extra open_action 由 MainActivity 读取，
+     经 trinity/widget 通道 / 冷启动 launchAction 分发到 WidgetSync._handleAction。 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="diary"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_diary"
+        android:shortcutLongLabel="@string/shortcut_diary">
+        <intent
+            android:action="com.xiaoman.app.action.OPEN"
+            android:targetPackage="com.xiaoman.app"
+            android:targetClass="com.xiaoman.app.MainActivity">
+            <extra android:name="open_action" android:value="diary" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="todo_add"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_todo_add"
+        android:shortcutLongLabel="@string/shortcut_todo_add">
+        <intent
+            android:action="com.xiaoman.app.action.OPEN"
+            android:targetPackage="com.xiaoman.app"
+            android:targetClass="com.xiaoman.app.MainActivity">
+            <extra android:name="open_action" android:value="todo_add" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="schedule"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_schedule"
+        android:shortcutLongLabel="@string/shortcut_schedule">
+        <intent
+            android:action="com.xiaoman.app.action.OPEN"
+            android:targetPackage="com.xiaoman.app"
+            android:targetClass="com.xiaoman.app.MainActivity">
+            <extra android:name="open_action" android:value="schedule" />
+        </intent>
+    </shortcut>
+</shortcuts>
