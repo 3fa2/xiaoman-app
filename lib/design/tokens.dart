@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 /// ============================================================
 /// 三位一体 v4 · 设计真源（唯一真源）
@@ -122,23 +122,47 @@ abstract final class AppSpacing {
 }
 
 /// 字号 6 档（补全行高/字距）
+/// 排版系统（v5.8.4 接入 Plus Jakarta Sans 可变字体，OFL 许可随 third_party/fonts 分发）：
+/// - 拉丁/数字走 PJS（geometric grotesk，替换默认 Roboto），中文自动回落系统字体
+/// - 可变字体权重经 FontVariation('wght', n) 驱动（const 构造，全部样式保持 const）
+/// - display/headline 启用 tabular figures：统计等数字场景逐位对齐不跳动
 abstract final class AppType {
+  static const family = 'Plus Jakarta Sans';
+
   static const display = TextStyle(
-    fontSize: 28, height: 1.20, letterSpacing: -0.4, fontWeight: FontWeight.w600,
+    fontSize: 30, height: 1.18, letterSpacing: -0.6, fontWeight: FontWeight.w700,
+    fontFamily: family,
+    fontVariations: [FontVariation('wght', 700)],
+    fontFeatures: [FontFeature.tabularFigures()],
   );
   static const title = TextStyle(
-    fontSize: 21, height: 1.30, letterSpacing: -0.2, fontWeight: FontWeight.w600,
+    fontSize: 21, height: 1.30, letterSpacing: -0.2, fontWeight: FontWeight.w700,
+    fontFamily: family,
+    fontVariations: [FontVariation('wght', 700)],
   );
   static const headline = TextStyle(
     fontSize: 16, height: 1.40, fontWeight: FontWeight.w600,
+    fontFamily: family,
+    fontVariations: [FontVariation('wght', 650)],
+    fontFeatures: [FontFeature.tabularFigures()],
   );
-  static const body = TextStyle(fontSize: 15, height: 1.60);
-  static const bodyLoose = TextStyle(fontSize: 15, height: 1.75); // 日记正文
+  static const body = TextStyle(
+    fontSize: 15, height: 1.60,
+    fontFamily: family, fontVariations: [FontVariation('wght', 430)],
+  );
+  static const bodyLoose = TextStyle(
+    // 日记正文
+    fontSize: 15, height: 1.75,
+    fontFamily: family, fontVariations: [FontVariation('wght', 400)],
+  );
   static const label = TextStyle(
     fontSize: 13, height: 1.40, letterSpacing: 0.1, fontWeight: FontWeight.w500,
+    fontFamily: family,
+    fontVariations: [FontVariation('wght', 560)],
   );
   static const caption = TextStyle(
     fontSize: 11.5, height: 1.30, letterSpacing: 0.2,
+    fontFamily: family, fontVariations: [FontVariation('wght', 460)],
   );
 }
 

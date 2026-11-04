@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -146,12 +146,23 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 图标舞台：圆形浅底盘让空态图标有「落点」，而非悬空浮在文字上
             Pulse(
-              child: PhosphorIcon(
-                icon,
-                size: 44,
-                color: p.outline,
-                weight: 1.5,
+              child: Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: p.surfaceContainerHighest,
+                  border: Border.all(color: p.outlineVariant.withAlpha(120)),
+                ),
+                alignment: Alignment.center,
+                child: PhosphorIcon(
+                  icon,
+                  size: 40,
+                  color: p.onSurfaceVariant,
+                  weight: 1.5,
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.s16),
@@ -721,6 +732,64 @@ class _ConfettiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ConfettiPainter old) => old.progress != progress;
+}
+
+/// 双层嵌套容器（Double-Bezel）：外壳用凹一档底色 + 大圆角包住内芯，
+/// 内芯自带上缘微高光（Flutter 无 inset shadow，用顶边亮线模拟），
+/// 内圆角 = 外圆角 - padding，保持同心曲线。用于 Bento 卡、统计卡等
+/// 需要"机械层次感"的重点卡。
+class DoubleBezelCard extends StatelessWidget {
+  const DoubleBezelCard({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.outerRadius = 22,
+    this.pad = 4,
+    this.innerColor,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double outerRadius;
+  final double pad;
+  final Color? innerColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final innerR = outerRadius - pad;
+    final inner = Container(
+      decoration: BoxDecoration(
+        color: innerColor ?? p.surface,
+        borderRadius: BorderRadius.circular(innerR),
+        // 内高光：上缘一线浅色（dark 白/12，light 纯白/70）
+        border: Border(
+          top: BorderSide(
+            color: dark
+                ? Colors.white.withAlpha(31)
+                : Colors.white.withAlpha(179),
+          ),
+        ),
+      ),
+      child: child,
+    );
+    final shell = Container(
+      padding: EdgeInsets.all(pad),
+      decoration: BoxDecoration(
+        color: p.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(outerRadius),
+        border: Border.all(color: p.outlineVariant.withAlpha(102)),
+      ),
+      child: inner,
+    );
+    if (onTap == null) return shell;
+    return InkWell(
+      borderRadius: BorderRadius.circular(outerRadius),
+      onTap: onTap,
+      child: shell,
+    );
+  }
 }
 
 /// 心情小圆点 + 文字（列表里心情只用小圆点，不整行染色）

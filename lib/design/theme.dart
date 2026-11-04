@@ -71,7 +71,9 @@ ThemeData buildAppTheme(Palette p, {required bool dark}) {
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadii.rLg),
-        side: BorderSide(color: p.hairline),
+        // 边框淡化到 40%：仅作浅色模式下的层次提示，不作主视觉语言
+        // （分层主要靠 surface 与 canvas 的底色差，见双层容器）
+        side: BorderSide(color: p.hairline.withAlpha(102)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

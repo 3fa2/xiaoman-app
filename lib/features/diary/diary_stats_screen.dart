@@ -162,9 +162,10 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: highlight ? p.primaryContainer : null,
+    return DoubleBezelCard(
+      outerRadius: 18,
+      pad: 3,
+      innerColor: highlight ? p.primaryContainer : null,
       child: SizedBox(
         height: _cardHeight,
         child: Padding(

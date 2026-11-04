@@ -112,19 +112,11 @@ class _BentoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pad = Padding(
-      padding: const EdgeInsets.all(AppSpacing.cardPad),
+      padding: const EdgeInsets.all(AppSpacing.cardPad - 4),
       child: child,
     );
-    return Card(
-      margin: EdgeInsets.zero,
-      child: onTap == null
-          ? pad
-          : InkWell(
-              borderRadius: BorderRadius.circular(AppRadii.rLg),
-              onTap: onTap,
-              child: pad,
-            ),
-    );
+    // 双层嵌套容器（外壳凹一档底色 + 内芯同心圆角 + 上缘微高光）
+    return DoubleBezelCard(onTap: onTap, child: pad);
   }
 }
 

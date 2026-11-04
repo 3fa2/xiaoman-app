@@ -1,5 +1,19 @@
 # CHANGELOG — 小满（原「三位一体」，v5.1.0 曾短暂更名「未满」）
 
+## v5.8.4+51（2026-11-05）· 视觉品质升级（high-end-visual-design skill 审查驱动）
+
+用 high-end-visual-design 设计 skill（Web/Tailwind 向）逐条映射到 Flutter 后落地的视觉升级：
+
+- **字体升级**（skill 第 1 优先级）：接入 **Plus Jakarta Sans 可变字体**（geometric grotesk，替换默认 Roboto；OFL 许可，字体文件 176KB 随 third_party/fonts 分发）。拉丁/数字全面换装，中文自动回落系统字体（不打包中文字形，零体积负担）。可变字重经 `FontVariation('wght')` 驱动：display 700 / headline 650 / body 430 / label 560——比静态 fontWeight 档位细腻得多。display 加大至 30 并收紧字距（标题更有存在感）
+- **数字等宽（tabular figures）**：display/headline 启用 `FontFeature.tabularFigures()`——统计页、计数器数字逐位对齐，刷新不再左右跳
+- **双层嵌套容器（Double-Bezel）**：新共享组件 `DoubleBezelCard`——外壳凹一档底色 + 22 圆角包住内芯，内芯同心圆角（18 = 22-4）+ 上缘微高光（Flutter 无 inset shadow，顶边亮线模拟）。应用于首页 Bento 四卡与统计页数据卡
+- **卡片边框淡化**：全局卡片边框从实色 hairline 降到 40% 透明——1px 灰硬边框是明确的反模式，分层改由底色差承担
+- **空态图标舞台**：空态大图标加 76px 圆形浅底盘 + 细边框——图标有"落点"，不再悬空浮在文字上
+
+动效曲线审计：全库仅 2 处非 MotionCurve 曲线（elasticOut 弹入 / easeOut 收缩），均为合理弹簧语义，无需调整。
+
+测试 79/79、analyze 0 error/0 warning、架构 0 违规；版本 5.8.4+51
+
 ## v5.8.3+50（2026-10-27）· 记录统计页视觉修正（真机截图反馈）
 
 - **头部四卡重排为 2×2 等高网格**：此前一行四卡在窄屏标签必截断（"连续记录（天…"），且右列 Column 自适应高度导致四卡参差；现在两行两列、每卡固定高度 104、图标/数值/标签垂直居中，四卡基线对齐
