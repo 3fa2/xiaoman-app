@@ -1,8 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../app/router.dart';
@@ -41,15 +42,15 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
 
   @override
   void dispose() {
-    // 退出时记最后一次查询（按击键记录会存下一串输入前缀）
+    // 退出时记最后一次查询（按击键记录会存下一串输入前缀）。
+    // 从标签管理/详情页带 q 进入的预过滤不算用户主动搜索，不入历史
     final q = _query.trim();
-    if (q.isNotEmpty) {
+    if (q.isNotEmpty && q != (widget.initialQuery ?? '').trim()) {
       final next = [q, ..._history.where((h) => h != q)].take(8).toList();
       unawaited(
         ref.read(settingsRepoProvider).set(_historyKey, jsonEncode(next)),
       );
     }
-    _ctrl.dispose();
     super.dispose();
   }
 
@@ -85,6 +86,17 @@ class _DiarySearchScreenState extends ConsumerState<DiarySearchScreen> {
           style: AppType.body.copyWith(color: p.onSurface),
           onChanged: (v) => setState(() => _query = v),
         ),
+        actions: [
+          // 标签管理（v5.9）：全部标签 + 使用计数，点按回搜索页预过滤
+          IconButton(
+            tooltip: '标签',
+            onPressed: () => context.push('/diary/tags'),
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.tag,
+              color: p.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -195,14 +207,32 @@ class _DiaryTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              HighlightText(
-                text: diary.title.isEmpty
-                    ? (diary.summary.isEmpty ? '心情打卡' : diary.summary)
-                    : diary.title,
-                query: query,
-                style: AppType.headline.copyWith(color: p.onSurface),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (diary.favorite) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: PhosphorIcon(
+                        PhosphorIconsFill.star,
+                        size: 14,
+                        color: p.primary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.s4),
+                  ],
+                  Expanded(
+                    child: HighlightText(
+                      text: diary.title.isEmpty
+                          ? (diary.summary.isEmpty ? '心情打卡' : diary.summary)
+                          : diary.title,
+                      query: query,
+                      style: AppType.headline.copyWith(color: p.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
               if (diary.summary.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.s4),

@@ -67,12 +67,22 @@ class AutoBackupService {
   }
 
   /// Kotlin 侧只认 ByteArray（StandardMessageCodec 不做 String→byte[] 转换），
-  /// 必须显式 utf8 编码——传 String 会 ClassCastException 且被下方 catch 静默吞掉
+  /// 必须显式 utf8 编码——传 String 会 ClassCastException 且被调用方 catch 静默吞掉
   Future<void> _writeToTree(String treeUri, String fileName, String content) =>
+      _invokeWrite(treeUri, fileName, utf8.encode(content), 'application/json');
+
+  /// 任意字节写入用户目录（完整备份 zip 用，mime=application/zip）
+  Future<void> saveBytesToTree(
+          String treeUri, String fileName, Uint8List bytes) =>
+      _invokeWrite(treeUri, fileName, bytes, 'application/zip');
+
+  Future<void> _invokeWrite(
+          String treeUri, String fileName, List<int> bytes, String mime) =>
       _channel.invokeMethod<void>('writeToTree', {
         'uri': treeUri,
         'fileName': fileName,
-        'bytes': utf8.encode(content),
+        'bytes': bytes,
+        'mime': mime,
       });
 
   Future<List<String>> _listTree(String treeUri) async {

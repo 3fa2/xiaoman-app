@@ -221,8 +221,8 @@ class BackupServiceImpl {
     return exportFullBackupTo('${docs.path}/xiaoman-full-$stamp.zip');
   }
 
-  Future<void> shareFullBackup() async {
-    final path = await exportFullBackup();
+  /// 分享已导出的完整备份 zip（配置了用户目录时先同步再分享，避免重复打包）
+  Future<void> shareFullBackupAt(String path) async {
     await Share.shareXFiles(
       [XFile(path, mimeType: 'application/zip')],
       text: '小满完整备份（含媒体）',
@@ -373,8 +373,12 @@ class BackupServiceImpl {
             );
       }
       for (final row in (data['diaries'] as List?) ?? []) {
+        final map = row as Map<String, dynamic>;
+        // 旧版（schema v8 及更早）备份没有 favorite 键：drift 的
+        // fromJson<bool>(null) 会抛 TypeError 使整个导入回滚——归一化补默认
+        map['favorite'] ??= false;
         await _db.into(_db.diaries).insertOnConflictUpdate(
-              DiariesRow.fromJson(row as Map<String, dynamic>),
+              DiariesRow.fromJson(map),
             );
       }
       for (final row in (data['mediaItems'] as List?) ?? []) {

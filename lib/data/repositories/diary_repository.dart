@@ -139,6 +139,17 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         deletedAt: row.deletedAt,
+        favorite: row.favorite,
+      );
+
+  @override
+  Future<void> setFavorite({
+    required int diaryId,
+    required bool favorite,
+  }) =>
+      // 星标是元数据操作：不刷 updatedAt，避免列表按时间排序时跳位
+      (_db.update(_db.diaries)..where((d) => d.id.equals(diaryId))).write(
+        DiariesCompanion(favorite: Value(favorite)),
       );
 
   @override
@@ -210,7 +221,8 @@ class DiaryRepositoryImpl with DraftMixin implements DiaryRepository {
           [
             leftOuterJoin(
               _db.diaries,
-              _db.diaries.notebookId.equalsExp(_db.diaryNotebooks.id),
+              _db.diaries.notebookId.equalsExp(_db.diaryNotebooks.id) &
+                  _db.diaries.deletedAt.isNull(),
             ),
           ],
         )

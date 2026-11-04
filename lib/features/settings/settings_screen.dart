@@ -434,7 +434,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('正在打包（含媒体），请稍候…')),
                       );
-                      await ref.read(backupProvider).shareFullBackup();
+                      final path =
+                          await ref.read(backupProvider).exportFullBackup();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      }
+                      // 配置了用户目录 → 多存一份 zip（与每日备份同策略）
+                      final treeUri =
+                          await ref.read(autoBackupProvider).backupDirUri();
+                      if (treeUri != null && treeUri.isNotEmpty) {
+                        try {
+                          final name =
+                              path.split(Platform.pathSeparator).last;
+                          await ref.read(autoBackupProvider).saveBytesToTree(
+                                treeUri,
+                                name,
+                                await File(path).readAsBytes(),
+                              );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('已同步到用户目录：$name')),
+                            );
+                          }
+                        } catch (_) {
+                          // 同步失败要让用户知道（否则以为多存了一份）
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('同步到用户目录失败，分享仍在继续'),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                      await ref.read(backupProvider).shareFullBackupAt(path);
                       if (mounted) {
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                       }

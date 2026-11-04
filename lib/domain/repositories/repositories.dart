@@ -49,6 +49,7 @@ abstract interface class DiaryRepository implements EditorRepository {
   Future<void> setMood({required int diaryId, required int? moodId});
   Future<void> setTags({required int diaryId, required List<String> tags});
   Future<void> setNotebook({required int diaryId, required int? notebookId});
+  Future<void> setFavorite({required int diaryId, required bool favorite}); // v9 收藏星标
   Future<void> delete(int id); // 软删除 → 回收站（30 天后启动时自动清理）
   Future<void> restoreDiary(int id); // 从回收站恢复
   Future<void> purgeDiary(int id); // 彻底删除（回收站用，媒体文件由调用方清理）

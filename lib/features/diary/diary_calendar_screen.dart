@@ -30,6 +30,9 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
   int? _notebookFilter;
   String _filterName = '所有日记';
 
+  /// v5.9：时间线「只看收藏」过滤（仅时间线视图生效）
+  bool _favOnly = false;
+
   static int _dayOf(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
 
   @override
@@ -60,6 +63,18 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
               color: p.onSurfaceVariant,
             ),
           ),
+          // v5.9：只看收藏（时间线视图下生效）
+          if (listMode)
+            IconButton(
+              onPressed: () => setState(() => _favOnly = !_favOnly),
+              tooltip: _favOnly ? '显示全部' : '只看收藏',
+              icon: PhosphorIcon(
+                _favOnly
+                    ? PhosphorIconsFill.star
+                    : PhosphorIconsRegular.star,
+                color: _favOnly ? p.primary : p.onSurfaceVariant,
+              ),
+            ),
           // 统计入口带文字，不再让用户猜图标是干嘛的
           TextButton.icon(
             onPressed: () => context.openMoodTrend(),
@@ -250,7 +265,17 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
     return StreamBuilder<List<Diary>>(
       stream: ref.watch(diaryRepoProvider).watchAll(),
       builder: (context, snap) {
-        final list = snap.data ?? const <Diary>[];
+        // v5.9：星标过滤（AppBar 的星形切换钮控制）；
+        // 时间线同样尊重抽屉选中的日记本（此前标题显示本名但列表不过滤）
+        final all = snap.data ?? const <Diary>[];
+        var scoped = all;
+        if (_notebookFilter != null) {
+          scoped = _notebookFilter == -1
+              ? all.where((d) => d.notebookId == null).toList()
+              : all.where((d) => d.notebookId == _notebookFilter).toList();
+        }
+        final list =
+            _favOnly ? scoped.where((d) => d.favorite).toList() : scoped;
         if (snap.connectionState == ConnectionState.waiting && list.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(AppSpacing.page),
@@ -258,10 +283,14 @@ class _DiaryCalendarScreenState extends ConsumerState<DiaryCalendarScreen> {
           );
         }
         if (list.isEmpty) {
-          return const EmptyState(
-            icon: PhosphorIconsRegular.notebook,
-            title: '还没有日记',
-            hint: '点右下角的笔写下第一篇',
+          return EmptyState(
+            icon: _favOnly
+                ? PhosphorIconsRegular.star
+                : PhosphorIconsRegular.notebook,
+            title: _favOnly ? '还没有收藏的日记' : '还没有日记',
+            hint: _favOnly
+                ? '在日记详情页右上角点星标收藏，这里会聚合它们'
+                : '点右下角的笔写下第一篇',
           );
         }
         return StreamBuilder<List<Mood>>(
@@ -581,16 +610,30 @@ class _DiaryCard extends ConsumerWidget {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                headText,
-                                style: AppType.headline.copyWith(
-                                  color: headText == diary.title ||
-                                          headText == diary.summary
-                                      ? p.onSurface
-                                      : p.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Row(
+                                children: [
+                                  if (diary.favorite) ...[
+                                    PhosphorIcon(
+                                      PhosphorIconsFill.star,
+                                      size: 13,
+                                      color: p.primary,
+                                    ),
+                                    const SizedBox(width: AppSpacing.s4),
+                                  ],
+                                  Expanded(
+                                    child: Text(
+                                      headText,
+                                      style: AppType.headline.copyWith(
+                                        color: headText == diary.title ||
+                                                headText == diary.summary
+                                            ? p.onSurface
+                                            : p.onSurfaceVariant,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             if (mood != null) ...[

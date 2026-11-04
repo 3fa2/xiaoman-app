@@ -9,6 +9,7 @@ import '../features/diary/diary_recycle_bin_screen.dart';
 import '../features/diary/diary_search_screen.dart';
 import '../features/diary/diary_share_card_screen.dart';
 import '../features/diary/diary_stats_screen.dart';
+import '../features/diary/diary_tags_screen.dart';
 import '../features/diary/mood_trend_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/notes/note_editor_screen.dart';
@@ -115,6 +116,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'stats',
                     builder: (c, s) => const DiaryStatsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'tags',
+                    builder: (c, s) => const DiaryTagsScreen(),
                   ),
                   GoRoute(
                     path: 'card/:id',

@@ -29,10 +29,44 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
   static const _fontKey = 'diary_reader_font';
   double _fontScale = 1.0;
 
+  /// 收藏星标（v5.9）：乐观更新，失败回滚
+  bool _favorite = false;
+
+  /// 日记是否存在（不存在/已删时 AppBar 的星标/删除/编辑不可点）
+  bool? _exists;
+
   @override
   void initState() {
     super.initState();
     _loadFontScale();
+    _loadFavorite();
+  }
+
+  Future<void> _loadFavorite() async {
+    final d = await ref.read(diaryRepoProvider).getById(widget.diaryId);
+    if (!mounted) return;
+    // 空态页（不存在/已删）禁用星标与删除，避免对 0 行乐观翻转的假成功
+    setState(() {
+      _exists = d != null;
+      if (d != null) _favorite = d.favorite;
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    final next = !_favorite;
+    setState(() => _favorite = next); // 乐观更新
+    try {
+      await ref
+          .read(diaryRepoProvider)
+          .setFavorite(diaryId: widget.diaryId, favorite: next);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _favorite = !next);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('收藏状态保存失败')),
+        );
+      }
+    }
   }
 
   Future<void> _loadFontScale() async {
@@ -144,46 +178,65 @@ class _DiaryDetailScreenState extends ConsumerState<DiaryDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(
-            tooltip: '正文字号',
-            onPressed: _pickFontScale,
-            icon: PhosphorIcon(
-              PhosphorIconsRegular.textAa,
-              color: p.onSurfaceVariant,
+          if (_exists != false) ...[
+            IconButton(
+              tooltip: _favorite ? '取消收藏' : '收藏',
+              onPressed: _toggleFavorite,
+              icon: PhosphorIcon(
+                _favorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
+                color: _favorite ? p.primary : p.onSurfaceVariant,
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: '分享卡片',
-            onPressed: () => context.openDiaryShareCard(widget.diaryId),
-            icon: PhosphorIcon(
-              PhosphorIconsRegular.shareNetwork,
-              color: p.onSurfaceVariant,
+            IconButton(
+              tooltip: '正文字号',
+              onPressed: _pickFontScale,
+              icon: PhosphorIcon(
+                PhosphorIconsRegular.textAa,
+                color: p.onSurfaceVariant,
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: () => context.openDiaryEditor(widget.diaryId),
-            icon: PhosphorIcon(
-              PhosphorIconsRegular.pencilSimple,
-              color: p.onSurfaceVariant,
+            IconButton(
+              tooltip: '分享卡片',
+              onPressed: () => context.openDiaryShareCard(widget.diaryId),
+              icon: PhosphorIcon(
+                PhosphorIconsRegular.shareNetwork,
+                color: p.onSurfaceVariant,
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: () async {
-              final ok = await showConfirmSheet(
-                context,
-                title: '删除这篇日记？',
-                message: '进入回收站，30 天内可恢复',
-              );
-              if (!ok || !context.mounted) return;
-              // 软删除：媒体文件保留，彻底删除时才清
-              await ref.read(diaryRepoProvider).delete(widget.diaryId);
-              if (context.mounted) context.pop();
-            },
-            icon: PhosphorIcon(
-              PhosphorIconsRegular.trash,
-              color: p.onSurfaceVariant,
+            IconButton(
+              onPressed: () => context.openDiaryEditor(widget.diaryId),
+              icon: PhosphorIcon(
+                PhosphorIconsRegular.pencilSimple,
+                color: p.onSurfaceVariant,
+              ),
             ),
-          ),
+            IconButton(
+              onPressed: () async {
+                final ok = await showConfirmSheet(
+                  context,
+                  title: '删除这篇日记？',
+                  message: '进入回收站，30 天内可恢复',
+                );
+                if (!ok || !context.mounted) return;
+                // 软删除：媒体文件保留，彻底删除时才清
+                await ref.read(diaryRepoProvider).delete(widget.diaryId);
+                if (context.mounted) context.pop();
+              },
+              icon: PhosphorIcon(
+                PhosphorIconsRegular.trash,
+                color: p.onSurfaceVariant,
+              ),
+            ),
+          ] else ...[
+            IconButton(
+              tooltip: '正文字号',
+              onPressed: _pickFontScale,
+              icon: PhosphorIcon(
+                PhosphorIconsRegular.textAa,
+                color: p.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
       body: FutureBuilder(

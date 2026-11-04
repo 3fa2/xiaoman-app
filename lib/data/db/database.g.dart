@@ -74,6 +74,16 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
   late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
       'deleted_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _favoriteMeta =
+      const VerificationMeta('favorite');
+  @override
+  late final GeneratedColumn<bool> favorite = GeneratedColumn<bool>(
+      'favorite', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("favorite" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -85,7 +95,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
         moodId,
         createdAt,
         updatedAt,
-        deletedAt
+        deletedAt,
+        favorite
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -144,6 +155,10 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
       context.handle(_deletedAtMeta,
           deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
     }
+    if (data.containsKey('favorite')) {
+      context.handle(_favoriteMeta,
+          favorite.isAcceptableOrUnknown(data['favorite']!, _favoriteMeta));
+    }
     return context;
   }
 
@@ -173,6 +188,8 @@ class $DiariesTable extends Diaries with TableInfo<$DiariesTable, DiariesRow> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
       deletedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+      favorite: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}favorite'])!,
     );
   }
 
@@ -193,6 +210,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+  final bool favorite;
   const DiariesRow(
       {required this.id,
       required this.dateDay,
@@ -203,7 +221,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       this.moodId,
       required this.createdAt,
       required this.updatedAt,
-      this.deletedAt});
+      this.deletedAt,
+      required this.favorite});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -223,6 +242,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
     }
+    map['favorite'] = Variable<bool>(favorite);
     return map;
   }
 
@@ -243,6 +263,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
+      favorite: Value(favorite),
     );
   }
 
@@ -260,6 +281,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      favorite: serializer.fromJson<bool>(json['favorite']),
     );
   }
   @override
@@ -276,6 +298,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'favorite': serializer.toJson<bool>(favorite),
     };
   }
 
@@ -289,7 +312,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           Value<int?> moodId = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt,
-          Value<DateTime?> deletedAt = const Value.absent()}) =>
+          Value<DateTime?> deletedAt = const Value.absent(),
+          bool? favorite}) =>
       DiariesRow(
         id: id ?? this.id,
         dateDay: dateDay ?? this.dateDay,
@@ -301,6 +325,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+        favorite: favorite ?? this.favorite,
       );
   DiariesRow copyWithCompanion(DiariesCompanion data) {
     return DiariesRow(
@@ -315,6 +340,7 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      favorite: data.favorite.present ? data.favorite.value : this.favorite,
     );
   }
 
@@ -330,14 +356,15 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('favorite: $favorite')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, dateDay, title, content, tags, notebookId,
-      moodId, createdAt, updatedAt, deletedAt);
+      moodId, createdAt, updatedAt, deletedAt, favorite);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -351,7 +378,8 @@ class DiariesRow extends DataClass implements Insertable<DiariesRow> {
           other.moodId == this.moodId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.favorite == this.favorite);
 }
 
 class DiariesCompanion extends UpdateCompanion<DiariesRow> {
@@ -365,6 +393,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
+  final Value<bool> favorite;
   const DiariesCompanion({
     this.id = const Value.absent(),
     this.dateDay = const Value.absent(),
@@ -376,6 +405,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.favorite = const Value.absent(),
   });
   DiariesCompanion.insert({
     this.id = const Value.absent(),
@@ -388,6 +418,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
+    this.favorite = const Value.absent(),
   })  : dateDay = Value(dateDay),
         createdAt = Value(createdAt),
         updatedAt = Value(updatedAt);
@@ -402,6 +433,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
+    Expression<bool>? favorite,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -414,6 +446,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (favorite != null) 'favorite': favorite,
     });
   }
 
@@ -427,7 +460,8 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       Value<int?>? moodId,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
-      Value<DateTime?>? deletedAt}) {
+      Value<DateTime?>? deletedAt,
+      Value<bool>? favorite}) {
     return DiariesCompanion(
       id: id ?? this.id,
       dateDay: dateDay ?? this.dateDay,
@@ -439,6 +473,7 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
+      favorite: favorite ?? this.favorite,
     );
   }
 
@@ -475,6 +510,9 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (favorite.present) {
+      map['favorite'] = Variable<bool>(favorite.value);
+    }
     return map;
   }
 
@@ -490,7 +528,8 @@ class DiariesCompanion extends UpdateCompanion<DiariesRow> {
           ..write('moodId: $moodId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('favorite: $favorite')
           ..write(')'))
         .toString();
   }
@@ -5072,6 +5111,7 @@ typedef $$DiariesTableCreateCompanionBuilder = DiariesCompanion Function({
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
+  Value<bool> favorite,
 });
 typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<int> id,
@@ -5084,6 +5124,7 @@ typedef $$DiariesTableUpdateCompanionBuilder = DiariesCompanion Function({
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
+  Value<bool> favorite,
 });
 
 class $$DiariesTableFilterComposer
@@ -5124,6 +5165,9 @@ class $$DiariesTableFilterComposer
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
       column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get favorite => $composableBuilder(
+      column: $table.favorite, builder: (column) => ColumnFilters(column));
 }
 
 class $$DiariesTableOrderingComposer
@@ -5164,6 +5208,9 @@ class $$DiariesTableOrderingComposer
 
   ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
       column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get favorite => $composableBuilder(
+      column: $table.favorite, builder: (column) => ColumnOrderings(column));
 }
 
 class $$DiariesTableAnnotationComposer
@@ -5204,6 +5251,9 @@ class $$DiariesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get favorite =>
+      $composableBuilder(column: $table.favorite, builder: (column) => column);
 }
 
 class $$DiariesTableTableManager extends RootTableManager<
@@ -5239,6 +5289,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
+            Value<bool> favorite = const Value.absent(),
           }) =>
               DiariesCompanion(
             id: id,
@@ -5251,6 +5302,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
+            favorite: favorite,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5263,6 +5315,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             required DateTime createdAt,
             required DateTime updatedAt,
             Value<DateTime?> deletedAt = const Value.absent(),
+            Value<bool> favorite = const Value.absent(),
           }) =>
               DiariesCompanion.insert(
             id: id,
@@ -5275,6 +5328,7 @@ class $$DiariesTableTableManager extends RootTableManager<
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
+            favorite: favorite,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (

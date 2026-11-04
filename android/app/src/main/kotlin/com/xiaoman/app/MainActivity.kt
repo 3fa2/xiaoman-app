@@ -222,6 +222,9 @@ class MainActivity : FlutterFragmentActivity() {
                         val uriStr = call.argument<String>("uri")
                         val name = call.argument<String>("fileName")
                         val bytes = call.argument<ByteArray>("bytes")
+                        // v5.9：mime 可选（完整备份 zip 用 application/zip）
+                        val mime = call.argument<String>("mime")
+                            ?: "application/json"
                         if (uriStr == null || name == null || bytes == null) {
                             result.error("bad_args", "uri/fileName/bytes required", null)
                             return@setMethodCallHandler
@@ -245,7 +248,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 }
                             }
                             val newDoc = DocumentsContract.createDocument(
-                                contentResolver, dirUri, "application/json", name,
+                                contentResolver, dirUri, mime, name,
                             ) ?: throw IllegalStateException("createDocument returned null")
                             contentResolver.openOutputStream(newDoc)?.use { it.write(bytes) }
                             result.success(true)

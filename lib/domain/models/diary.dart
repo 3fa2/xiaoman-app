@@ -10,6 +10,7 @@ class Diary {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt; // 回收站：非空=已软删除（v7）
+  final bool favorite; // 收藏星标（v9）
 
   const Diary({
     required this.id,
@@ -22,6 +23,7 @@ class Diary {
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.favorite = false,
   });
 
   String get summary {

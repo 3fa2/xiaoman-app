@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'trinity');
@@ -73,6 +73,10 @@ class AppDatabase extends _$AppDatabase {
           // v7 → v8：备忘回收站（软删除）
           if (from < 8) {
             await m.addColumn(notes, notes.deletedAt);
+          }
+          // v8 → v9：日记收藏星标
+          if (from < 9) {
+            await m.addColumn(diaries, diaries.favorite);
           }
         },
       );
@@ -217,6 +221,8 @@ class AppDatabase extends _$AppDatabase {
         moodId: r.readNullable<int>('mood_id'),
         createdAt: r.read<DateTime>('created_at'),
         updatedAt: r.read<DateTime>('updated_at'),
+        deletedAt: r.readNullable<DateTime>('deleted_at'),
+        favorite: r.read<bool>('favorite'),
       );
 
   NoteRow _rowToNote(QueryRow r) => NoteRow(

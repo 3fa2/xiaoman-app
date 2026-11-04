@@ -23,10 +23,82 @@ class DiaryRecycleBinScreen extends ConsumerStatefulWidget {
 class _DiaryRecycleBinScreenState extends ConsumerState<DiaryRecycleBinScreen> {
   int _tab = 0; // 0=日记 1=备忘
 
+  /// v5.9：一键清空回收站（当前 tab 分区；日记连媒体文件，备忘连清单子项）。
+  /// 不可逆：强制确认。
+  Future<void> _emptyAll() async {
+    final diaryRepo = ref.read(diaryRepoProvider);
+    final noteRepo = ref.read(noteRepoProvider);
+    final mediaRepo = ref.read(mediaRepoProvider);
+    final isDiaryTab = _tab == 0;
+
+    final ok = await showConfirmSheet(
+      context,
+      title: isDiaryTab ? '清空日记回收站？' : '清空备忘回收站？',
+      message: '分区内的全部条目和文件将被彻底删除，无法恢复',
+    );
+    if (!ok || !mounted) return;
+
+    var count = 0;
+    try {
+      if (isDiaryTab) {
+        final diaries = await diaryRepo.watchDeleted().first;
+        for (final d in diaries) {
+          // 快照与点击确认之间用户可能点了「恢复」：仍软删的才硬删
+          final current = await diaryRepo.getById(d.id);
+          if (current == null || current.deletedAt == null) continue;
+          final items = await mediaRepo.listFor(MediaOwner.diary, d.id);
+          for (final m in items) {
+            await mediaRepo.remove(m.id);
+          }
+          await diaryRepo.purgeDiary(d.id);
+          count++;
+        }
+      } else {
+        final notes = await noteRepo.watchDeletedNotes().first;
+        for (final n in notes) {
+          await noteRepo.purgeNote(n.id);
+          count++;
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('清空失败：$e')),
+        );
+      }
+      return;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(count == 0 ? '回收站本区已是空的' : '已清空 $count 条'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('回收站')),
+      appBar: AppBar(
+        title: const Text('回收站'),
+        actions: [
+          TextButton.icon(
+            onPressed: _emptyAll,
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.trash,
+              size: 17,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            label: Text(
+              '清空本区',
+              style: AppType.label.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

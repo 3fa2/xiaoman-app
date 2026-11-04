@@ -22,6 +22,7 @@ class Diaries extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get deletedAt => dateTime().nullable()(); // v7 回收站：非空=已删
+  BoolColumn get favorite => boolean().withDefault(const Constant(false))(); // v9 收藏星标
 }
 
 /// ①b 日记本：用户自建分类（v4.3 新增，碎碎念/认知日记/…）
