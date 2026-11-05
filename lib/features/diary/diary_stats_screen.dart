@@ -204,17 +204,17 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// GitHub 式打卡热力图：最近 26 周，行=周几，列=周；有日记的心情色、
-/// 无日记的浅灰；有心情的天取第一篇带心情日记的心情
-class _Heatmap extends StatelessWidget {
+/// GitHub 式打卡热力图：最近 26 周，行=周几，列=周；有日记亮心情色、
+/// 无心情的日记日用主色、无记录暗格
+class _Heatmap extends ConsumerWidget {
   const _Heatmap({required this.diaries});
 
   final List<Diary> diaries;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = Theme.of(context).colorScheme;
-    // dateDay -> 当天日记（取心情：第一篇带心情的）
+    // dateDay -> 当天心情（第一篇带心情日记的）
     final byDay = <int, int?>{};
     final daySet = <int>{};
     for (final d in diaries) {
@@ -223,6 +223,24 @@ class _Heatmap extends StatelessWidget {
         byDay[d.dateDay] = d.moodId;
       }
     }
+    return StreamBuilder<List<Mood>>(
+      stream: ref.watch(diaryRepoProvider).watchMoods(),
+      builder: (context, moodSnap) {
+        final moodMap = {
+          for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m,
+        };
+        return _heatBody(context, p, byDay, daySet, moodMap);
+      },
+    );
+  }
+
+  Widget _heatBody(
+    BuildContext context,
+    ColorScheme p,
+    Map<int, int?> byDay,
+    Set<int> daySet,
+    Map<int, Mood> moodMap,
+  ) {
 
     final today = DateTime.now();
     final today0 = DateTime(today.year, today.month, today.day);
@@ -252,6 +270,7 @@ class _Heatmap extends StatelessWidget {
                           end.subtract(Duration(days: (w - 1) * 7 + (6 - dow))),
                           byDay,
                           daySet,
+                          moodMap,
                         ),
                       ),
                   ],
@@ -274,23 +293,27 @@ class _Heatmap extends StatelessWidget {
     DateTime day,
     Map<int, int?> byDay,
     Set<int> daySet,
+    Map<int, Mood> moodMap,
   ) {
     final key = day.year * 10000 + day.month * 100 + day.day;
     final future = day.isAfter(DateTime.now());
     if (future) return const SizedBox(width: 12, height: 12);
+    final dark = Theme.of(context).brightness == Brightness.dark;
     Color color;
+    Color? border;
     if (daySet.contains(key)) {
       final moodId = byDay[key];
-      color = p.primary;
-      if (moodId != null) {
-        // 心情色弱化为容器感：主色透明底 + 心情色边不行（热力图要色块），
-        // 直接心情色 55% 透明度叠主色即可区分"有心情"
-        color = p.primary.withAlpha(150);
-      }
+      final mood = moodId == null ? null : moodMap[moodId];
+      // 热力图是内容组件：有心情亮真心情色（全饱和色块，与心情分布卡一致），
+      // 无心情的日记日用主色
+      color = mood == null
+          ? p.primary
+          : MoodPalette.colorOf(mood.hue, dark: dark);
     } else {
       // 空格子：onSurfaceVariant 低透明度——surfaceContainerHighest 在深色
       // 卡片上几乎不可见（真机截图确认），这里要"隐约可见的网格"
       color = p.onSurfaceVariant.withAlpha(38);
+      border = p.outlineVariant.withAlpha(90);
     }
     final isToday = key ==
         DateTime.now().year * 10000 +
@@ -305,9 +328,9 @@ class _Heatmap extends StatelessWidget {
         border: isToday
             ? Border.all(color: p.primary, width: 1.2)
             // 无记录格加同色系细边，深浅模式都可辨识
-            : daySet.contains(key)
-                ? null
-                : Border.all(color: p.outlineVariant.withAlpha(90)),
+            : border != null
+                ? Border.all(color: border)
+                : null,
       ),
     );
   }
