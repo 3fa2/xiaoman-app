@@ -214,14 +214,16 @@ class _Heatmap extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = Theme.of(context).colorScheme;
-    // dateDay -> 当天心情（第一篇带心情日记的）
+    // dateDay -> 当天心情：同日多篇取「最新创建且带心情」的一篇
+    //（与首页此刻心情的读取语义一致；旧→新遍历，带心情者覆盖）
     final byDay = <int, int?>{};
     final daySet = <int>{};
-    for (final d in diaries) {
+    final chronological = [...diaries]
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    for (final d in chronological) {
       daySet.add(d.dateDay);
-      if (!byDay.containsKey(d.dateDay) || byDay[d.dateDay] == null) {
-        byDay[d.dateDay] = d.moodId;
-      }
+      if (d.moodId != null) byDay[d.dateDay] = d.moodId;
+      byDay.putIfAbsent(d.dateDay, () => null);
     }
     return StreamBuilder<List<Mood>>(
       stream: ref.watch(diaryRepoProvider).watchMoods(),
