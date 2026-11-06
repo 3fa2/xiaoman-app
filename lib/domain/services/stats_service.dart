@@ -117,6 +117,7 @@ YearlyStats yearlyStats(
   }
   String? topMood;
   var topMoodCount = 0;
+  // 平局规则（隐式约定）：严格大于 → 并列时取 diaries 遍历序中最先出现者
   for (final e in moodCounts.entries) {
     if (e.value > topMoodCount) {
       topMoodCount = e.value;

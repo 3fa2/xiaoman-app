@@ -128,21 +128,52 @@ class WidgetSync {
       }
     } catch (_) {}
 
-    // v5.9.1：同步其它 App 分享进来的文本（落库为备忘）
+    // v5.9.1：同步其它 App 分享进来的文本（队列一次取空，逐条落库为备忘）
     try {
-      final shared = await _ch.invokeMethod<Map<dynamic, dynamic>>('getSharedText');
-      final text = shared?['text'] as String?;
-      if (text != null && text.trim().isNotEmpty) {
-        final title = (shared?['title'] as String?) ?? '';
-        await ref.read(noteRepoProvider).save(
-              id: null,
-              title: title.trim(),
-              content: text.trim(),
-              extra: null,
-            );
-        await ref.read(reminderWarningsProvider.notifier).syncNow();
+      final queue = await _ch.invokeMethod<String>('getSharedText');
+      if (queue != null && queue != '[]') {
+        final items = jsonDecode(queue) as List<dynamic>;
+        for (final item in items) {
+          final map = item as Map<dynamic, dynamic>;
+          await _saveSharedNote(ref, map['text'] as String?,
+              map['title'] as String?);
+        }
       }
     } catch (_) {}
+  }
+
+  /// 分享文本落库为备忘（drainLaunchAction 与 _handleAction 共用）。
+  /// extra=null → repo 兜底解析第一个笔记本（全新安装会自动建「默认笔记本」）。
+  /// 成功后给轻反馈，防止用户以为没存而重复分享。
+  static Future<void> _saveSharedNote(
+    WidgetRef ref,
+    String? text,
+    String? title,
+  ) async {
+    if (text == null || text.trim().isEmpty) return;
+    try {
+      await ref.read(noteRepoProvider).save(
+            id: null,
+            title: (title ?? '').trim(),
+            content: text.trim(),
+            extra: null,
+          );
+      await ref.read(reminderWarningsProvider.notifier).syncNow();
+      final ctx = rootKey.currentContext;
+      if (ctx != null) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('已存入备忘'), duration: Duration(seconds: 2)),
+        );
+      }
+    } catch (e) {
+      // 落库失败：文本已从原生队列移除，至少让用户知道丢了
+      final ctx = rootKey.currentContext;
+      if (ctx != null) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('分享内容保存失败：$e')),
+        );
+      }
+    }
   }
 
   static Future<void> _doToggle(WidgetRef ref, int id) async {
@@ -293,21 +324,19 @@ class WidgetSync {
       case 'schedule':
         ctx.go('/schedule');
       case 'shared_text':
-        // v5.9.1 分享接收（launchAction 字符串形态兜底）：文本已在原生
-        // SharedPreferences 暂存，这里取走落库为备忘
+        // v5.9.1 分享接收（launchAction 字符串形态兜底）：文本在原生队列，
+        // getSharedText 一次取空逐条落库
         try {
-          final shared =
-              await _ch.invokeMethod<Map<dynamic, dynamic>>('getSharedText');
-          final text = shared?['text'] as String?;
-          if (text != null && text.trim().isNotEmpty) {
-            final title = (shared?['title'] as String?) ?? '';
-            await ref.read(noteRepoProvider).save(
-                  id: null,
-                  title: title.trim(),
-                  content: text.trim(),
-                  extra: null,
-                );
-            await ref.read(reminderWarningsProvider.notifier).syncNow();
+          final queue =
+              await _ch.invokeMethod<String>('getSharedText');
+          if (queue != null && queue != '[]') {
+            final items = jsonDecode(queue) as List<dynamic>;
+            for (final item in items) {
+              final map = item as Map<dynamic, dynamic>;
+              await _saveSharedNote(
+                  ref, map['text'] as String?, map['title'] as String?);
+            }
+            await _afterMoodSync(ref);
           }
         } catch (_) {}
       default:

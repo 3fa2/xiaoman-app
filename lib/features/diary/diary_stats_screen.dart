@@ -267,11 +267,13 @@ class _Heatmap extends ConsumerWidget {
       children: [
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          reverse: true, // 默认露出最近一周（右侧）
+          reverse: true, // children[0] 贴右缘：初始即露出最新的本周
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var w = weeks; w >= 1; w--)
+              // 新→旧遍历（w 1→26）：children[0] = 本周（reverse 下贴右缘、
+              // 初始可见），最旧周在列表最左，向左滚动回看
+              for (var w = 1; w <= weeks; w++)
                 Column(
                   children: [
                     for (var dow = 0; dow < 7; dow++)
@@ -467,6 +469,12 @@ class _YearlyRecapCard extends ConsumerWidget {
     return StreamBuilder<List<Mood>>(
       stream: ref.watch(diaryRepoProvider).watchMoods(),
       builder: (context, moodSnap) {
+        // 首帧（mood 流未到）不渲染总结句：空 moodNames 会把带心情日记
+        // 误标为「已删心情」（1-2 帧后自愈，但闪现就是闪现）
+        if (moodSnap.connectionState == ConnectionState.waiting &&
+            moodSnap.data == null) {
+          return const SizedBox.shrink();
+        }
         final moodNames = {
           for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m.name,
         };

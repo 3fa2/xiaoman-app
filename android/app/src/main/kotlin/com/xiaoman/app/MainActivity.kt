@@ -45,20 +45,28 @@ class MainActivity : FlutterFragmentActivity() {
         widgetChannel?.invokeMethod("openAction", a)
     }
 
-    /// v5.9.1 分享接收：其它 App 分享文本到小满 → 暂存 + 通知 Flutter
-    /// 落库为备忘（widget_sync 侧 shared_text 处理，冷启动经 getSharedText 补取）
+    /// v5.9.1 分享接收：其它 App 分享文本到小满 → 追加进队列（JSON 数组，
+    /// 防冷启动窗口内二次分享的单槽覆盖丢文本）+ 通知 Flutter 落库为备忘
     private fun readSharedText(intent: Intent?) {
         if (intent?.action != Intent.ACTION_SEND) return
-        if (intent.type != "text/plain") return
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-        val title = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: ""
+        // 源 App 可能用非常规大小写 setType：normalize 后再比较
+        val mime = Intent.normalizeMimeType(intent.type) ?: return
+        if (mime != "text/plain") return
+        // SpannableString 等非纯 String extra 跨进程恢复后 getStringExtra 会
+        // 返回 null：用 getCharSequenceExtra 兜底
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return
+        val title = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString() ?: ""
         if (text.isBlank()) return
         launchAction = "shared_text"
-        getSharedPreferences("trinity_widget", Context.MODE_PRIVATE)
-            .edit()
-            .putString("pending_shared_text", text)
-            .putString("pending_shared_title", title)
-            .apply()
+        val prefs = getSharedPreferences("trinity_widget", Context.MODE_PRIVATE)
+        val pending = prefs.getString("pending_shared_queue", null)
+        val arr = if (pending != null) org.json.JSONArray(pending) else org.json.JSONArray()
+        arr.put(
+            org.json.JSONObject()
+                .put("text", text)
+                .put("title", title),
+        )
+        prefs.edit().putString("pending_shared_queue", arr.toString()).apply()
         widgetChannel?.invokeMethod("openAction", "shared_text")
     }
 
@@ -106,17 +114,13 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(a)
                     }
                     "getSharedText" -> {
-                        // v5.9.1：取走暂存的分享文本（冷启动补取）
+                        // v5.9.1：取空分享队列（JSON 数组，防单槽覆盖丢文本）
                         val prefs = getSharedPreferences("trinity_widget", Context.MODE_PRIVATE)
-                        val text = prefs.getString("pending_shared_text", null)
-                        val title = prefs.getString("pending_shared_title", null)
-                        if (text != null) {
-                            prefs.edit()
-                                .remove("pending_shared_text")
-                                .remove("pending_shared_title")
-                                .apply()
+                        val queue = prefs.getString("pending_shared_queue", null)
+                        if (queue != null) {
+                            prefs.edit().remove("pending_shared_queue").apply()
                         }
-                        result.success(mapOf("text" to text, "title" to title))
+                        result.success(queue ?: "[]")
                     }
                     "drainPending" -> {
                         // App 启动时同步待处理勾选（App 没运行时小组件标记的 toggle）

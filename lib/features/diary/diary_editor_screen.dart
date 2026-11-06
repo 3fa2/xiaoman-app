@@ -690,10 +690,18 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                     onToggleSpeech: _toggleSpeech,
                     charCount: _title.text.length + _content.text.length,
                     onInsertTemplate: (text) {
-                      // 追加到正文末尾（正文空则直接填入）
+                      // 追加到正文末尾（正文空则直接填入）；
+                      // value 整体赋值并把光标固定到末尾（text setter 会把
+                      // selection 重置为无效值，后续输入落点不可靠）
                       final base =
                           _content.text.isEmpty ? '' : '${_content.text}\n\n';
-                      _content.text = '$base$text';
+                      final newText = '$base$text';
+                      _content.value = TextEditingValue(
+                        text: newText,
+                        selection: TextSelection.collapsed(
+                          offset: newText.length,
+                        ),
+                      );
                       _controller.onChanged(
                         title: _title.text,
                         content: _content.text,
@@ -1394,7 +1402,8 @@ class _EditorToolbar extends StatelessWidget {
           ),
         ),
       );
-      if (picked != null) {
+      // sheet 关闭动画期间用户可能已退出编辑器：防写已 dispose 的 controller
+      if (picked != null && context.mounted) {
         onInsertTemplate(resolveTemplate(picked, DateTime.now()));
       }
     }

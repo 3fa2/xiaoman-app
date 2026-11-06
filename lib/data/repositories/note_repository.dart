@@ -185,21 +185,7 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
           ..where((nb) => nb.id.equals(notebookId)))
         .getSingleOrNull();
     if (nbExists == null) {
-      final first = await (_db.select(_db.notebooks)
-            ..orderBy([(nb) => OrderingTerm.asc(nb.sortOrder)]))
-          .getSingleOrNull();
-      if (first != null) {
-        notebookId = first.id;
-      } else {
-        notebookId = await _db.into(_db.notebooks).insert(
-              NotebooksCompanion.insert(
-                name: '默认笔记本',
-                colorIndex: 0,
-                sortOrder: 0,
-                createdAt: DateTime.now(),
-              ),
-            );
-      }
+      notebookId = await _resolveFallbackNotebookId();
     }
     await (_db.update(_db.notes)..where((n) => n.id.equals(id))).write(
       NotesCompanion(
@@ -208,6 +194,24 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
         updatedAt: Value(DateTime.now()),
       ),
     );
+  }
+
+  /// 兜底笔记本 id：按 sortOrder 取第一个；没有任何笔记本则新建「默认笔记本」。
+  /// 供恢复/分享落库等"原归属不可考"的路径共用（notebooks 表无种子，
+  /// notebookId=1 在全新安装或删过第一个本的用户身上是悬空引用）。
+  Future<int> _resolveFallbackNotebookId() async {
+    final first = await (_db.select(_db.notebooks)
+          ..orderBy([(nb) => OrderingTerm.asc(nb.sortOrder)]))
+        .getSingleOrNull();
+    if (first != null) return first.id;
+    return _db.into(_db.notebooks).insert(
+          NotebooksCompanion.insert(
+            name: '默认笔记本',
+            colorIndex: 0,
+            sortOrder: 0,
+            createdAt: DateTime.now(),
+          ),
+        );
   }
 
   @override
@@ -288,10 +292,13 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
   }) async {
     // 自动保存通道：更新已有笔记时绝不碰 tags/pinned（由编辑器专用通道管理），
     // 否则打字触发的每次自动保存都会清空标签和置顶（真机曾发生的丢数据路径）。
+    // extra == null（未显式指定归属，如分享落库/无参新建）→ 兜底到第一个笔记本，
+    // 没有笔记本则建「默认笔记本」——写死 1 在全新安装/删过第一个本的用户身上
+    // 是悬空引用，备忘会从所有列表里消失（逐字审查发现的真 bug）。
     if (id == null) {
       return saveNote(
         id: null,
-        notebookId: extra ?? 1,
+        notebookId: extra ?? await _resolveFallbackNotebookId(),
         title: title,
         content: content,
         tags: const [],
@@ -300,7 +307,7 @@ class NoteRepositoryImpl with DraftMixin implements NoteRepository {
     }
     await (_db.update(_db.notes)..where((n) => n.id.equals(id))).write(
       NotesCompanion(
-        notebookId: Value(extra ?? 1),
+        notebookId: Value(extra ?? await _resolveFallbackNotebookId()),
         title: Value(title),
         content: Value(content),
         updatedAt: Value(DateTime.now()),
