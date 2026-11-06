@@ -780,6 +780,14 @@ class DoubleBezelCard extends StatelessWidget {
         color: p.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(outerRadius),
         border: Border.all(color: p.outlineVariant.withAlpha(102)),
+        // 着色环境影（带主色调，非纯黑）：让重点卡从底面轻轻浮起
+        boxShadow: [
+          BoxShadow(
+            color: p.primary.withAlpha(dark ? 34 : 22),
+            blurRadius: 26,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: inner,
     );

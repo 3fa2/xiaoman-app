@@ -41,6 +41,9 @@ class DiaryStatsScreen extends ConsumerWidget {
             children: [
               _HeadlineStats(diaries: diaries),
               const SizedBox(height: AppSpacing.s12),
+              // 年度回顾（Wrapped 风格，v5.9.1）
+              _YearlyRecapCard(diaries: diaries),
+              const SizedBox(height: AppSpacing.s12),
               const SectionHeader('最近半年'),
               Card(
                 child: Padding(
@@ -57,6 +60,14 @@ class DiaryStatsScreen extends ConsumerWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpacing.cardPad),
                   child: _MonthlyBars(diaries: diaries),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s12),
+              const SectionHeader('写作时段'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.cardPad),
+                  child: _HourBucketsCard(diaries: diaries),
                 ),
               ),
               const SizedBox(height: AppSpacing.s8),
@@ -440,6 +451,201 @@ class _MoodDistribution extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 年度回顾卡（Wrapped 风格，v5.9.1）：当年核心数字一屏速览
+class _YearlyRecapCard extends ConsumerWidget {
+  const _YearlyRecapCard({required this.diaries});
+
+  final List<Diary> diaries;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Mood>>(
+      stream: ref.watch(diaryRepoProvider).watchMoods(),
+      builder: (context, moodSnap) {
+        final moodNames = {
+          for (final m in (moodSnap.data ?? const <Mood>[])) m.id: m.name,
+        };
+        final year = DateTime.now().year;
+        final s = yearlyStats(diaries, moodNames, year);
+        if (s.entries == 0) {
+          return const SizedBox.shrink();
+        }
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        return DoubleBezelCard(
+          outerRadius: 22,
+          pad: 4,
+          innerColor: dark ? p.surfaceContainerLow : p.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.cardPad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIconsRegular.confetti,
+                      size: 15,
+                      color: p.primary,
+                    ),
+                    const SizedBox(width: AppSpacing.s8),
+                    Text(
+                      '$year 年度回顾',
+                      style: AppType.label.copyWith(
+                        color: p.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _recapCell(p, '${s.entries} 篇', '年度记录'),
+                    ),
+                    Expanded(
+                      child: _recapCell(p, '${s.activeDays} 天', '记录天数'),
+                    ),
+                    Expanded(
+                      child: _recapCell(p,
+                          s.totalChars >= 10000
+                              ? '${(s.totalChars / 10000).toStringAsFixed(1)} 万'
+                              : '${s.totalChars}',
+                          '年度字数'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s8),
+                Text(
+                  _recapSentence(s),
+                  style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _recapSentence(YearlyStats s) {
+    final parts = <String>[];
+    if (s.bestMonth > 0) {
+      parts.add('${s.bestMonth} 月最高产（${s.bestMonthEntries} 篇）');
+    }
+    if (s.topMood != null) {
+      parts.add('最常心情「${s.topMood}」');
+    }
+    if (s.longestStreakDays >= 2) {
+      parts.add('最长连写 ${s.longestStreakDays} 天');
+    }
+    return parts.isEmpty ? '今年刚开始，继续记录吧' : parts.join(' · ');
+  }
+
+  Widget _recapCell(ColorScheme p, String value, String label) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: AppType.headline.copyWith(color: p.onSurface),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: AppSpacing.s4),
+        Text(
+          label,
+          style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+/// 写作时段分布（6 时段直方图，v5.9.1）：一天中什么时候最爱写
+class _HourBucketsCard extends StatelessWidget {
+  const _HourBucketsCard({required this.diaries});
+
+  final List<Diary> diaries;
+
+  static const _labels = hourBucketNames;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Theme.of(context).colorScheme;
+    final buckets = hourBuckets(diaries);
+    final total = buckets.fold<int>(0, (a, b) => a + b);
+    if (total == 0) {
+      return Text(
+        '还没有记录，写一篇看看自己的写作时段',
+        style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+      );
+    }
+    final max = buckets.fold<int>(1, (a, b) => a > b ? a : b);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < 6; i++)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    _labels[i],
+                    style: AppType.caption.copyWith(color: p.onSurface),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadii.rSm),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(
+                          begin: 0, end: buckets[i] / max),
+                      duration: const Duration(milliseconds: 250),
+                      curve: MotionCurve.standard,
+                      builder: (context, v, _) => LinearProgressIndicator(
+                        value: v,
+                        minHeight: 8,
+                        backgroundColor: p.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation(
+                          i == 2 || i == 3
+                              ? p.primary
+                              : p.primary.withAlpha(110),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    '${buckets[i]}',
+                    style: AppType.caption.copyWith(
+                      color: p.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: AppSpacing.s4),
+        Text(
+          '基于每篇日记的创建时间',
+          style: AppType.caption.copyWith(color: p.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }

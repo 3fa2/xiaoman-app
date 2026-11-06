@@ -1,5 +1,16 @@
 # CHANGELOG — 小满（原「三位一体」，v5.1.0 曾短暂更名「未满」）
 
+## v5.9.1+53（2026-11-06）· 分享接收到小满 + 日记模板 + 年度回顾 + 写作时段
+
+开源调研（Day One templates/share extension、DiaryX writing patterns、Obsidian Templater）后落地的四项：
+
+- **分享接收到小满（Share Target）**：在任何 App（微信/浏览器/新闻）选中文字 → 分享 → 小满，自动存为备忘（EXTRA_SUBJECT 为标题、EXTRA_TEXT 为正文）。冷启动经 SharedPreferences 暂存 + getSharedText 补取；热启动直接 channel 通知落库。零网络，纯本地
+- **日记模板**：编辑器工具栏新增「插入模板」——内置 5 个结构化模板（每日回顾 / 感恩记录 / 情绪拆解 / 小确幸清单 / 每周复盘），选择后追加到正文（支持 {{日期}} {{星期}} 占位符创建时解析）。Day One templates 免费层对标
+- **年度回顾卡**（统计页顶部，Wrapped 风格）：当年总篇数 / 记录天数 / 年度字数三格 + 一句话总结（最高产月份 · 最常心情 · 最长连写），数据不足以整卡隐藏
+- **写作时段分布**（统计页新卡）：6 时段直方图（凌晨/早晨/上午/下午/傍晚/夜晚），看自己一天中什么时候最爱写——DiaryX writing patterns 借鉴
+
+测试 84/84、analyze 0 error/0 warning、架构 0 违规、Kotlin 编译过；版本 5.9.1+53
+
 ## v5.9.0+52（2026-11-05）· 收藏星标 + 标签管理 + 回收站清空 + 备份落用户目录
 
 四个互补的新功能（schema v9）：

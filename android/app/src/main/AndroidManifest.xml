@@ -58,6 +58,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
+            <!-- v5.9.1 分享接收：其它 App 分享文本到小满 → 快速存为备忘 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+
             <!-- 长按图标快捷方式：写日记 / 记待办 / 今日日程 -->
             <meta-data
                 android:name="android.app.shortcuts"

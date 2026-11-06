@@ -127,6 +127,22 @@ class WidgetSync {
         await _afterMoodSync(ref);
       }
     } catch (_) {}
+
+    // v5.9.1：同步其它 App 分享进来的文本（落库为备忘）
+    try {
+      final shared = await _ch.invokeMethod<Map<dynamic, dynamic>>('getSharedText');
+      final text = shared?['text'] as String?;
+      if (text != null && text.trim().isNotEmpty) {
+        final title = (shared?['title'] as String?) ?? '';
+        await ref.read(noteRepoProvider).save(
+              id: null,
+              title: title.trim(),
+              content: text.trim(),
+              extra: null,
+            );
+        await ref.read(reminderWarningsProvider.notifier).syncNow();
+      }
+    } catch (_) {}
   }
 
   static Future<void> _doToggle(WidgetRef ref, int id) async {
@@ -276,6 +292,24 @@ class WidgetSync {
         ctx.go('/diary/edit');
       case 'schedule':
         ctx.go('/schedule');
+      case 'shared_text':
+        // v5.9.1 分享接收（launchAction 字符串形态兜底）：文本已在原生
+        // SharedPreferences 暂存，这里取走落库为备忘
+        try {
+          final shared =
+              await _ch.invokeMethod<Map<dynamic, dynamic>>('getSharedText');
+          final text = shared?['text'] as String?;
+          if (text != null && text.trim().isNotEmpty) {
+            final title = (shared?['title'] as String?) ?? '';
+            await ref.read(noteRepoProvider).save(
+                  id: null,
+                  title: title.trim(),
+                  content: text.trim(),
+                  extra: null,
+                );
+            await ref.read(reminderWarningsProvider.notifier).syncNow();
+          }
+        } catch (_) {}
       default:
         // v5.8：心情打卡小组件（动作串形如 mood_3，moodId 从字符串解析）；
         // 常规路径走 channel 的 moodPick 回调，这里兜住 openAction 字符串形态。

@@ -29,11 +29,13 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         readOpenAction(intent)
+        readSharedText(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         readOpenAction(intent)
+        readSharedText(intent)
     }
 
     private fun readOpenAction(intent: Intent?) {
@@ -41,6 +43,23 @@ class MainActivity : FlutterFragmentActivity() {
         launchAction = a
         // 热启动时 engine 在跑，直接推给 Flutter
         widgetChannel?.invokeMethod("openAction", a)
+    }
+
+    /// v5.9.1 分享接收：其它 App 分享文本到小满 → 暂存 + 通知 Flutter
+    /// 落库为备忘（widget_sync 侧 shared_text 处理，冷启动经 getSharedText 补取）
+    private fun readSharedText(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        if (intent.type != "text/plain") return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        val title = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: ""
+        if (text.isBlank()) return
+        launchAction = "shared_text"
+        getSharedPreferences("trinity_widget", Context.MODE_PRIVATE)
+            .edit()
+            .putString("pending_shared_text", text)
+            .putString("pending_shared_title", title)
+            .apply()
+        widgetChannel?.invokeMethod("openAction", "shared_text")
     }
 
     private var widgetChannel: MethodChannel? = null
@@ -85,6 +104,19 @@ class MainActivity : FlutterFragmentActivity() {
                         val a = launchAction
                         launchAction = null
                         result.success(a)
+                    }
+                    "getSharedText" -> {
+                        // v5.9.1：取走暂存的分享文本（冷启动补取）
+                        val prefs = getSharedPreferences("trinity_widget", Context.MODE_PRIVATE)
+                        val text = prefs.getString("pending_shared_text", null)
+                        val title = prefs.getString("pending_shared_title", null)
+                        if (text != null) {
+                            prefs.edit()
+                                .remove("pending_shared_text")
+                                .remove("pending_shared_title")
+                                .apply()
+                        }
+                        result.success(mapOf("text" to text, "title" to title))
                     }
                     "drainPending" -> {
                         // App 启动时同步待处理勾选（App 没运行时小组件标记的 toggle）

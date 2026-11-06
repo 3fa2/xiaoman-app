@@ -158,7 +158,8 @@ ThemeData buildAppTheme(Palette p, {required bool dark}) {
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: p.primary,
       foregroundColor: p.onPrimary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.rLg)),
+      // pill 形（StadiumBorder）：与圆角语言一致
+      shape: const StadiumBorder(),
       elevation: 2,
     ),
     switchTheme: SwitchThemeData(

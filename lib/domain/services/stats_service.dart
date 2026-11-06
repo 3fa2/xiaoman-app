@@ -59,3 +59,106 @@ int longestStreak(List<Diary> diaries) {
   }
   return best;
 }
+
+// ---- 年度回顾 + 写作时段（v5.9.1，DiaryX writing patterns 借鉴）----
+
+/// 年度回顾快照（Wrapped 风格）：某一年度全部核心数字。
+class YearlyStats {
+  final int year;
+  final int entries; // 总篇数
+  final int totalChars; // 总字数（标题+正文）
+  final int activeDays; // 有记录的天数
+  final int bestMonth; // 最高产月份（1-12，0=全年无记录）
+  final int bestMonthEntries;
+  final String? topMood; // 最常心情名（null=全年没打过心情）
+  final int topMoodCount;
+  final int longestStreakDays;
+
+  const YearlyStats({
+    required this.year,
+    required this.entries,
+    required this.totalChars,
+    required this.activeDays,
+    required this.bestMonth,
+    required this.bestMonthEntries,
+    required this.topMood,
+    required this.topMoodCount,
+    required this.longestStreakDays,
+  });
+}
+
+/// 汇总 [year] 年度的回顾数据。moods 提供心情名映射。
+YearlyStats yearlyStats(
+  List<Diary> diaries,
+  Map<int, String> moodNames,
+  int year,
+) {
+  final inYear = diaries.where((d) => d.dateDay ~/ 10000 == year).toList();
+  final totalChars =
+      inYear.fold<int>(0, (n, d) => n + d.title.length + d.content.length);
+  final activeDays = inYear.map((d) => d.dateDay).toSet().length;
+
+  final perMonth = List<int>.filled(12, 0);
+  for (final d in inYear) {
+    perMonth[(d.dateDay ~/ 100) % 100 - 1]++;
+  }
+  var bestMonth = 0;
+  var bestMonthEntries = 0;
+  for (var m = 0; m < 12; m++) {
+    if (perMonth[m] > bestMonthEntries) {
+      bestMonthEntries = perMonth[m];
+      bestMonth = m + 1;
+    }
+  }
+
+  final moodCounts = <int, int>{};
+  for (final d in inYear) {
+    if (d.moodId != null) moodCounts[d.moodId!] = (moodCounts[d.moodId!] ?? 0) + 1;
+  }
+  String? topMood;
+  var topMoodCount = 0;
+  for (final e in moodCounts.entries) {
+    if (e.value > topMoodCount) {
+      topMoodCount = e.value;
+      topMood = moodNames[e.key] ?? '已删心情';
+    }
+  }
+
+  return YearlyStats(
+    year: year,
+    entries: inYear.length,
+    totalChars: totalChars,
+    activeDays: activeDays,
+    bestMonth: bestMonth,
+    bestMonthEntries: bestMonthEntries,
+    topMood: topMood,
+    topMoodCount: topMoodCount,
+    longestStreakDays: longestStreak(inYear),
+  );
+}
+
+/// 写作时段分布（6 个时段的篇数）：凌晨(0-6) 早晨(6-9) 上午(9-12)
+/// 下午(12-17) 傍晚(17-21) 夜晚(21-24)。基于 createdAt 的小时。
+List<int> hourBuckets(List<Diary> diaries) {
+  final buckets = List<int>.filled(6, 0);
+  for (final d in diaries) {
+    final h = d.createdAt.hour;
+    if (h < 6) {
+      buckets[0]++;
+    } else if (h < 9) {
+      buckets[1]++;
+    } else if (h < 12) {
+      buckets[2]++;
+    } else if (h < 17) {
+      buckets[3]++;
+    } else if (h < 21) {
+      buckets[4]++;
+    } else {
+      buckets[5]++;
+    }
+  }
+  return buckets;
+}
+
+/// 时段名称（与 hourBuckets 下标对应）
+const hourBucketNames = ['凌晨', '早晨', '上午', '下午', '傍晚', '夜晚'];

@@ -18,6 +18,7 @@ import '../../domain/models/diary.dart';
 import '../../domain/models/media.dart';
 import '../../domain/services/autosave_controller.dart';
 import 'journal_prompts.dart';
+import 'journal_templates.dart';
 import '../shared/widgets.dart';
 
 /// 日记编辑器（P0-1 自动保存重做）。
@@ -688,6 +689,17 @@ class _DiaryEditorScreenState extends ConsumerState<DiaryEditorScreen>
                     onPickMedia: _pickMedia,
                     onToggleSpeech: _toggleSpeech,
                     charCount: _title.text.length + _content.text.length,
+                    onInsertTemplate: (text) {
+                      // 追加到正文末尾（正文空则直接填入）
+                      final base =
+                          _content.text.isEmpty ? '' : '${_content.text}\n\n';
+                      _content.text = '$base$text';
+                      _controller.onChanged(
+                        title: _title.text,
+                        content: _content.text,
+                        extra: _moodId,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1328,6 +1340,7 @@ class _EditorToolbar extends StatelessWidget {
     required this.onPickMedia,
     required this.onToggleSpeech,
     required this.charCount,
+    required this.onInsertTemplate,
   });
 
   final bool listening;
@@ -1335,9 +1348,57 @@ class _EditorToolbar extends StatelessWidget {
   final VoidCallback onToggleSpeech;
   final int charCount;
 
+  /// 选模板后回调（解析占位符后的文本，追加到正文末尾）
+  final ValueChanged<String> onInsertTemplate;
+
   @override
   Widget build(BuildContext context) {
     final p = Theme.of(context).colorScheme;
+
+    Future<void> pickTemplate() async {
+      final picked = await showModalBottomSheet<JournalTemplate>(
+        context: context,
+        useSafeArea: true,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.s12),
+                child: Text(
+                  '插入模板',
+                  style: AppType.label.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              for (final t in journalTemplates)
+                ListTile(
+                  title: Text(
+                    t.name,
+                    style: AppType.body.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurface,
+                    ),
+                  ),
+                  trailing: PhosphorIcon(
+                    PhosphorIconsRegular.caretRight,
+                    size: 16,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                  onTap: () => Navigator.pop(ctx, t),
+                ),
+              const SizedBox(height: AppSpacing.s8),
+            ],
+          ),
+        ),
+      );
+      if (picked != null) {
+        onInsertTemplate(resolveTemplate(picked, DateTime.now()));
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.page, AppSpacing.s8, AppSpacing.page, AppSpacing.s8,
@@ -1366,6 +1427,15 @@ class _EditorToolbar extends StatelessWidget {
           ),
           if (listening)
             Text('听写中…', style: AppType.caption.copyWith(color: p.primary)),
+          // 日记模板（v5.9.1）
+          IconButton(
+            tooltip: '插入模板',
+            onPressed: pickTemplate,
+            icon: PhosphorIcon(
+              PhosphorIconsRegular.notePencil,
+              color: p.onSurfaceVariant,
+            ),
+          ),
           const Spacer(),
           // 实时字数（标题+正文）
           Text(
